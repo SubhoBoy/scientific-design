@@ -1,0 +1,60 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\title{Digital Design Training Program \\ \large Day 6: The AVR Toolchain \& Matrix Keypad}
+\author{Author,who}
+\date{April 1, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Theme: Transitioning away from automated build tools, writing custom hardware drivers in pure C, and implementing hardware interrupts for input logic.}
+
+\subsection*{Module 6.1: Termux AVR-GCC \& Makefiles (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Drop down a layer of abstraction from PlatformIO to understand how the GNU Compiler Collection transforms C code into a machine binary.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Environment Setup:} Inside the Debian environment in Termux, install the raw compilation tools: \verb|apt install gcc-avr binutils-avr avr-libc make|.
+        \item \textbf{The Compilation Pipeline:} Explain the journey from \verb|.c| source files to \verb|.o| object files (compilation), the linking process into an \verb|.elf| executable, and the final extraction into a \verb|.hex| file.
+        \item \textbf{Writing a Makefile:} Create a basic \verb|Makefile| to automate these steps. Define the microcontroller (\verb|MCU = atmega328p|) and the clock frequency (\verb|F_CPU = 16000000UL|).
+        \item \textbf{Execution:} Run \verb|make| in the terminal to compile the Day 5 bare-metal code, then flash the resulting \verb|.hex| file using the established ArduinoDroid method.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} Successfully compiling and building the code manually via the command line without relying on an IDE or PlatformIO's automated scripts.
+\end{itemize}
+\newpage
+\subsection*{Module 6.2: Matrix Scanning in C (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Wire a 5x5 matrix keypad and write a custom bare-metal driver to read 25 buttons using only 10 microcontroller pins.
+    \item \textbf{Requirements:} 1x 5x5 Matrix Keypad, Breadboard jumper wires.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Hardware Grouping:} Connect the 5 Row pins to \verb|PORTD| (e.g., PD2-PD6) and the 5 Column pins to \verb|PORTC| (e.g., PC0-PC4). Keeping rows and columns on their own dedicated ports makes the bitwise math significantly easier.
+        \item \textbf{The Scanning Algorithm (Theory):} The microcontroller must sequentially pull one column \verb|LOW| while keeping the others \verb|HIGH|, then read all the rows. If a row reads \verb|LOW|, the button at that row/column intersection is pressed.
+        \item \textbf{Driver Implementation:} Write the nested loops in C to perform this scan rapidly. Use a 2D array as a lookup table to map the detected row/column indices to the corresponding character or number.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} Pressing any of the 25 buttons correctly identifies its unique coordinate (e.g., Row 3, Col 2) and prints the mapped character to a serial debug output or LED indicator.
+\end{itemize}
+\newpage
+\subsection*{Module 6.3: Pin Change Interrupts (PCINT) (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Prevent the microcontroller from wasting CPU cycles constantly polling the keypad by using hardware interrupts to detect keypresses instantly.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Interrupt Theory:} Understand the difference between standard External Interrupts (\verb|INT0|, \verb|INT1|) and Pin Change Interrupts (\verb|PCINT|), which can trigger on state changes across entire 8-bit ports.
+        \item \textbf{Rest State Configuration:} While waiting for an input, all columns must be driven \verb|LOW| and all rows must be set as \verb|INPUT_PULLUP|. This ensures any keypress pulls a row \verb|LOW|.
+        \item \textbf{Register Setup:} Configure the Pin Change Interrupt Control Register (\verb|PCICR|) to enable interrupts for the port connected to the keypad rows (\verb|PORTD|). Set the specific pins in the Pin Change Mask Register (\verb|PCMSK2|) to listen strictly to those 5 row pins.
+        \item \textbf{The ISR Workflow:} Write the \verb|ISR(PCINT2_vect)| routine. When a button is pressed, the interrupt fires. Inside the ISR, quickly execute the matrix scanning function from Module 6.2 to determine \emph{which} button was pressed, save the result, and restore the rest state.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The matrix scanning algorithm runs \emph{only} when a physical button is pushed. The main \verb|while(1)| loop is now completely empty and free to handle other intensive tasks.
+\end{itemize}
+
+\end{document}
