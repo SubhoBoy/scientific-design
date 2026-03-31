@@ -1,0 +1,82 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\title{Digital Design Training Program \\ \large Day 5: The Bare-Metal C Transition}
+\author{Author,who}
+\date{April 1, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Theme: Stripping away the Arduino framework (like \texttt{digitalWrite} and \texttt{pinMode}) to understand the underlying AVR hardware architecture, memory registers, and bitwise mathematics.}
+
+\subsection*{Module 5.1: Bitwise Operations and Masking (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Master the bitwise operators necessary for manipulating specific hardware pins without accidentally altering the state of adjacent pins.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Core Operators:} Review the standard C bitwise operators: AND (\verb|&|), OR (\verb/|/), XOR (\verb|^|), NOT (\verb|~|), and Bit Shifts (\verb|<<|, \verb|>>|).
+        \item \textbf{Setting a Bit (Turning it ON):} Write out the math to force a specific bit to 1 using OR. Show how shifting a 1 into position creates the mask.
+\begin{verbatim}
+REG |= (1 << 3); // Sets bit 3 to 1, leaves others unchanged
+\end{verbatim}
+        \item \textbf{Clearing a Bit (Turning it OFF):} Write out the math to force a specific bit to 0 using AND coupled with a negated mask.
+\begin{verbatim}
+REG &= ~(1 << 3); // Clears bit 3 to 0, leaves others unchanged
+\end{verbatim}
+        \item \textbf{Toggling and Checking:} Demonstrate toggling a bit using XOR (\verb|REG ^= (1 << 3)|) and checking a bit's state using AND (\verb|if (REG & (1 << 3))|).
+    \end{enumerate}
+    \item \textbf{Checkpoint:} Complete a pen-and-paper worksheet successfully predicting the 8-bit hexadecimal outcomes of various bitwise operations.
+\end{itemize}
+\newpage
+\subsection*{Module 5.2: AVR Architecture and Memory Maps (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Understand how physical microcontroller pins map to specific addresses in the CPU's memory.
+    \item \textbf{Requirements:} ATmega328P Pinout Diagram and Datasheet.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Pin Mapping:} Explain that ``Arduino Pin 8'' is an artificial construct. On the actual ATmega328P chip, it is ``Port B, Bit 0'' (\verb|PB0|). Locate the physical AVR designations for all the standard I/O pins.
+        \item \textbf{The Big Three Registers:} Introduce the three 8-bit memory registers responsible for controlling a Port:
+        \begin{itemize}
+            \item \verb|DDRx| (Data Direction Register): Determines if a pin is an Input (0) or Output (1).
+            \item \verb|PORTx| (Data Register): Sets the output state (HIGH/LOW) or enables the internal pull-up resistor if the pin is an input.
+            \item \verb|PINx| (Port Input Pins): Reads the actual physical voltage present on the pins.
+        \end{itemize}
+    \end{enumerate}
+    \item \textbf{Checkpoint:} Accurately identifying the correct \verb|DDR|, \verb|PORT|, and \verb|PIN| register and bit index for any given Arduino pin.
+\end{itemize}
+\newpage
+\subsection*{Module 5.3: Bare-Metal I/O Translation (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Rewrite Day 1's LED and Button logic using strictly bare-metal C register manipulation, permanently abandoning the Arduino core library.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Output Translation:} Replace \verb|pinMode(8, OUTPUT)| and \verb|digitalWrite(8, HIGH)| with their bare-metal equivalents.
+\begin{verbatim}
+DDRB |= (1 << PB0);  // Set PB0 as output
+PORTB |= (1 << PB0); // Drive PB0 HIGH
+\end{verbatim}
+        \item \textbf{Input Translation:} Replace \verb|pinMode(9, INPUT_PULLUP)| by configuring the \verb|DDR| as an input and activating the pull-up via the \verb|PORT| register.
+\begin{verbatim}
+DDRB &= ~(1 << PB1); // Set PB1 as input
+PORTB |= (1 << PB1); // Enable pull-up on PB1
+\end{verbatim}
+        \item \textbf{Reading State:} Replace \verb|digitalRead(9)| by masking the \verb|PINB| register.
+\begin{verbatim}
+if (!(PINB & (1 << PB1))) { // If button is pressed (LOW)
+    PORTB ^= (1 << PB0);    // Toggle LED
+}
+\end{verbatim}
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The breadboard setup from Day 1 functions identically, but compiles in a fraction of the time and consumes significantly less flash memory.
+\end{itemize}
+
+\end{document}
