@@ -1,0 +1,81 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{amsmath}
+
+\title{Digital Design Training Program \\ \large Day 8: Embedded Math Algorithms}
+\author{Author,who}
+\date{April 1, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Theme: Implementing advanced mathematical approximations strictly in C, and exploring extreme bit-level optimizations.}
+
+\subsection*{Module 8.1: RK4 Engine Implementation (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Translate continuous mathematical models into discrete, executable C code using the 4th-Order Runge-Kutta (RK4) method.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The RK4 Algorithm:} Review the RK4 formulas (calculating the four slopes: $k_{1}, k_{2}, k_{3}, k_{4}$).
+        \item \textbf{Function Pointers in C:} To make the RK4 engine reusable for different math functions, teach students how to pass a function as an argument.
+        \item \textbf{Writing the Engine:} Write the core \verb|float rk4_step(...)| function. It will take the current \verb|x|, current \verb|y|, step size \verb|h|, and a \verb|float (*deriv)(float, float)| function pointer.
+        \item \textbf{The Loop:} Write a wrapper function that loops the \verb|rk4_step| from $x_{0}$ to the user's target $x_{target}$.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The C code correctly compiles a generic RK4 solver capable of taking any derivative function and stepping forward to an approximate answer.
+\end{itemize}
+\newpage
+\subsection*{Module 8.2: Trig \& Logs via RK4 and Custom Formatting (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Feed the ODEs from Day 7 into the RK4 engine to calculate values, and write a custom lightweight formatter to display \verb|float| results on the LCD.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Defining the Derivatives:} Write the simple C functions for the derivatives (e.g., \verb|float deriv_exp(float x, float y) { return y; }|).
+        \item \textbf{Execution:} Call the RK4 engine to calculate $e^{2}$ or $\sin(1.57)$ using standard 32-bit \verb|float| variables.
+        \item \textbf{The Display Problem:} Standard \verb|sprintf()| to convert a float to a string for the LCD is massive (it can consume up to 1.5KB of Flash).
+        \item \textbf{Custom Float-to-String:} Write a lightweight C function to bypass \verb|sprintf()|.
+        \begin{itemize}
+            \item Cast the float to an \verb|int| to extract the whole number.
+            \item Subtract the integer from the float to isolate the decimal.
+            \item Multiply the decimal by 1000 (for 3 decimal places) and cast to \verb|int|.
+            \item Print: \verb|lcd_print(itoa(whole_num))|, then \verb|lcd_print(".")|,\\ then \verb|lcd_print(itoa(fraction_num))|.
+        \end{itemize}
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The LCD displays the numerically integrated value of $e^{2}$ as roughly \verb|7.389|. Built a math library from scratch.
+\end{itemize}
+\newpage
+\subsection*{Module 8.3: The Fast Inverse Square Root Algorithm (15 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Implement the legendary Quake III algorithm to see how memory manipulation and pointer casting can bypass processor limitations for extreme performance.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Bottleneck:} Standard square root calculation (even RK4) is slow. In graphics (and our calculator), we often need $1/\sqrt{x}$.
+        \item \textbf{Bit-Level Hacking:} The core concept is treating the memory address of a floating-point number as a standard 32-bit integer to perform extremely fast pseudo-logarithmic shifting.
+        \item \textbf{Implementation:} Type out the famous algorithm strictly in C:
+\begin{verbatim}
+float Q_rsqrt( float number ) {
+    long i;
+    float x2, y;
+    const float threehalfs = 1.5F;
+    x2 = number * 0.5F;
+    y  = number;
+    i  = * ( long * ) &y;                       
+    i  = 0x5f3759df - ( i >> 1 );               
+    y  = * ( float * ) &i;                      
+    y  = y * ( threehalfs - ( x2 * y * y ) );   
+    return y;
+}
+\end{verbatim}
+        \item \textbf{Execution:} Pass a number into the function, convert the returned float using the custom string formatter, and display it on the LCD.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The microcontroller computes $1/\sqrt{x}$ almost instantly. Understanding the raw power of C pointers and memory casting on an embedded system.
+\end{itemize}
+
+\end{document}
