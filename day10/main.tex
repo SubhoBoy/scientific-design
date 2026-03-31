@@ -1,0 +1,64 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{amsmath}
+
+\title{Digital Design Training Program \\ \large Day 10: Capstone Integration and Optimization}
+\author{Author,who}
+\date{April 1, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Theme: Fusing the hardware drivers, the RK4 math engine, and the parser into a cohesive, physical product.}
+
+\subsection*{Module 10.1: The Hardware/Software Pipeline (90 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Link the PCINT Keypad driver (Day 6) to the LCD driver (Day 7) and the Parser (Day 9) to create a reactive user interface.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Keypad Mapping:} Map the 5x5 keypad physically. Dedicate the top row to scientific functions (\verb|sin|, \verb|cos|, \verb|exp|, \verb|ln|, \verb|sqrt|). Dedicate the right column to basic operators (\verb|/|, \verb|*|, \verb|-|, \verb|+|, \verb|=|). Map the rest to numbers 0-9, decimal point, and parentheses.
+        \item \textbf{Live LCD Echo:} Modify the Keypad ISR so that whenever a button is pressed, the character is instantly pushed to the \verb|input_buffer| AND sent to the LCD via \verb|lcd_print()|. This gives the user real-time visual feedback.
+        \item \textbf{The Trigger:} Implement logic so that pressing the \verb|=| key locks the keypad, clears the screen, prints ``Calculating...'', and triggers the Tokenizer and Shunting Yard functions.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The user can physically type a long equation on the keypad, see it perfectly rendered on the LCD, and trigger the software backend with the equals button.
+\end{itemize}
+\newpage
+\subsection*{Module 10.2: RPN Evaluation \& The Math Engine (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Execute the Reverse Polish Notation queue using the custom embedded math algorithms developed on Day 8.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Evaluation Stack:} Create a fresh stack to hold numbers during the final calculation.
+        \item \textbf{The Evaluation Loop:} Read the RPN queue left to right.
+        \begin{itemize}
+            \item If it's a number, push it to the Evaluation Stack.
+            \item If it's an operator (\verb|+|, \verb|*|), pop the top two numbers from the stack, perform the math, and push the result back.
+            \item If it's a scientific function (\verb|sin|, \verb|exp|), pop \emph{one} number, pass it into the \textbf{RK4 Engine} or \textbf{Fast Inverse Sqrt} functions built on Day 8, and push the calculated result back.
+        \end{itemize}
+        \item \textbf{Final Output:} When the queue is empty, the final remaining number on the Evaluation Stack is the answer. Pass this float through the custom formatting function (Day 8) and print it to the bottom row of the LCD.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} A fully functional scientific calculator. Typing \verb|sin(1.57)*2=| yields \verb|2.000| on the screen.
+\end{itemize}
+\newpage
+\subsection*{Module 10.3: UI State Machines \& Benchmarking (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Add professional UI features (like a shift key) and scientifically benchmark the accuracy and limitations of their custom RK4 math engine against commercial calculators.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Mode Shifting (Software UI):} Dedicate one keypad button as ``SHIFT''. Create a state machine so that pressing SHIFT changes the mapping of the keypad (e.g., the \verb|sin| button becomes \verb|arcsin| or \verb|tan|). Change the LCD cursor style to blink when SHIFT is active.
+        \item \textbf{Benchmarking Execution Time:} Wrap the RPN evaluator in a timer using \verb|millis()|. Print out exactly how many milliseconds it takes the ATmega328P to compute complex equations.
+        \item \textbf{Accuracy Analysis:} Run edge cases (e.g., $e^{\ln(2)}$, or $\sin(\cos(0))$) on the Arduino and compare the results to the smartphone calculator.
+        \item \textbf{Tuning the Engine:} Adjust the step size $h$ in your RK4 algorithms. Observe: making $h$ smaller increases mathematical accuracy, but visibly increases the ``Calculating...'' delay on the screen due to processor load.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} You have successfully built a mathematically sound, hardware-optimized, custom-driver scientific calculator from scratch,while understanding every bit of logic from the physical button press to the floating-point approximation.
+\end{itemize}
+
+\end{document}
