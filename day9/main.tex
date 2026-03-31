@@ -1,0 +1,71 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\title{Digital Design Training Program \\ \large Day 9: Data Structures and Parsing Algorithms}
+\author{Author,who}
+\date{April 1, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Theme: Translating human-readable mathematical equations into a format that the microcontroller can process, using fundamental computer science algorithms and custom memory-safe C structures.}
+
+\subsection*{Module 9.1: Embedded Memory \& Static Stacks (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Understand the severe dangers of dynamic memory allocation (\verb|malloc|/\verb|free|) on a microcontroller with only 2KB of SRAM, and build memory-safe static data structures.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Heap Fragmentation Problem:} Using standard C++ \verb|std::stack| or C's \verb|malloc()| is dangerous on AVR. Creating and destroying nodes rapidly during math calculations will fragment the tiny SRAM, inevitably causing a silent crash (Stack Overflow).
+        \item \textbf{The Static Alternative:} Build fixed-size arrays. We will define a strict limit: our calculator can only process equations with up to 32 tokens.
+        \item \textbf{Building the \texttt{struct}:} Write a custom Stack structure in C.
+\begin{verbatim}
+typedef struct {
+    float data[32]; // Fixed-size array for memory safety
+    int top;        // Index of the top element
+} FloatStack;
+\end{verbatim}
+        \item \textbf{Pointer Manipulation:} Write the core functions \verb|push(FloatStack *s, float val)| and \verb|pop(FloatStack *s)|. Note that passing the stack by reference (using the \verb|*| pointer) prevents the Arduino from copying the entire 32-element array every time a function is called.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} Instantiate the \verb|FloatStack|, pass it via pointers, and safely push/pop values without crashing the microcontroller.
+\end{itemize}
+\newpage
+\subsection*{Module 9.2: Lexical Analysis (Tokenization) (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Teach the program how to group individual keypad character presses into meaningful mathematical ``Tokens'' (e.g., turning the characters `1', `2', `.', `5' into the single float \verb|12.5|).
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Input Buffer:} Create a global \verb|char input_buffer[32]| to store exactly what the user types on the matrix keypad.
+        \item \textbf{Parsing Logic:} Write a loop that iterates through the buffer. Implement logic that checks if a character is a digit or a decimal point.
+        \item \textbf{String to Float:} When the loop encounters an operator (like \verb|+| or \verb|*|), it means the number is finished. Use the standard C function \verb|atof()| (ASCII to Float) to convert the gathered digit characters into a real 32-bit \verb|float|.
+        \item \textbf{Operator Tagging:} Create an \verb|enum| to classify non-number tokens (e.g., \verb|OP_ADD|, \verb|OP_MULT|, \verb|OP_SIN|, \verb|OP_LPAREN|).
+    \end{enumerate}
+    \item \textbf{Checkpoint:} If a user types \verb|12.5+sin(3)| on the keypad, the software successfully breaks it down into four distinct tokens: \verb|[Float: 12.5]|, \verb|[Operator: +]|, \verb|[Function: sin]|, \verb|[Float: 3]|.
+\end{itemize}
+\newpage
+\subsection*{Module 9.3: Dijkstra's Shunting Yard Algorithm (90 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Solve the Order of Operations (BODMAS) problem by converting standard ``Infix'' notation (e.g., \verb|3 + 4 * 2|) into Reverse Polish Notation (RPN) (e.g., \verb|3 4 2 * +|), which a computer can solve linearly.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Operator Precedence:} Assign a numerical weight to operations. \verb|+| and \verb|-| have a weight of 1, \verb|*| and \verb|/| have 2, \verb|^| (power) has 3, and scientific functions (\verb|sin|, \verb|ln|) have 4.
+        \item \textbf{The Two-Structure System:} Understand Dijkstra's method. You need an ``Output Queue'' (for the final RPN string) and an ``Operator Stack'' (using the struct from Module 9.1).
+        \item \textbf{Algorithm Implementation:} Code the core rules:
+        \begin{itemize}
+            \item If the token is a number, push it straight to the Output Queue.
+            \item If it's a function (\verb|sin|), push it to the Operator Stack.
+            \item If it's an operator, pop higher-precedence operators from the Stack to the Queue, then push the new operator to the Stack.
+            \item If it's a left parenthesis \verb|(|, push it. If it's a right parenthesis \verb|)|, pop operators to the Queue until you hit the left one.
+        \end{itemize}
+    \end{enumerate}
+    \item \textbf{Checkpoint:} User can input a complex string like \verb|3+4*2/(1-5)^2| into their code, and the serial monitor correctly prints out the mathematical RPN equivalent.
+\end{itemize}
+
+\end{document}
