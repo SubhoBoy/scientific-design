@@ -1,0 +1,66 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\title{Digital Design Training Program \\ \large Day 4: Timekeeping Logic \& User Interface}
+\author{Author,who}
+\date{April 1, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Theme: Cascading time logic, non-blocking hardware inputs, and building the Edit Mode state machine.}
+
+\subsection*{Module 4.1: Cascading Time Logic (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Convert the raw 10Hz background tick into a readable 24-hour clock format.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Cascade:} Inside the \verb|loop()| (or a function called by it), constantly check the \verb|deciseconds| variable updated by the ISR.
+        \item Write the cascading reset logic:
+        \begin{itemize}
+            \item If \verb|deciseconds >= 10|: reset to 0, increment \verb|seconds|.
+            \item If \verb|seconds >= 60|: reset to 0, increment \verb|minutes|.
+            \item If \verb|minutes >= 60|: reset to 0, increment \verb|hours|.
+            \item If \verb|hours >= 24|: reset to 0.
+        \end{itemize}
+        \item \textbf{Data Mapping:} Break the raw time down into individual digits using modulo math and division. For example, \verb|timeArray[0] = hours / 10;| and \verb|timeArray[1] = hours % 10;|. Update the array so the multiplexer automatically renders the new time.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The hardware now functions perfectly as a 24-hour clock, ticking upward accurately without any visual stuttering on the displays.
+\end{itemize}
+\newpage
+\subsection*{Module 4.2: Control Buttons \& Non-Blocking Debounce (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Read physical user inputs without blocking the processor or registering false double-clicks.
+    \item \textbf{Requirements:} 4x Pushbuttons (Pause/Play, Select, Increment, Decrement).
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item Wire the buttons from open digital pins directly to Ground. Configure them in setup using \verb|pinMode(pin, INPUT_PULLUP);|.
+        \item \textbf{State-Change Detection:} The software must act only when the button \emph{transitions} from \verb|HIGH| (unpressed) to \verb|LOW| (pressed), requiring the tracking of a \verb|lastButtonState| variable.
+        \item \textbf{Software Debouncing:} Mechanical switches literally bounce on a microscopic level, causing multiple rapid triggers. Introduce \verb|millis()| to record the time of a valid press. Ignore any subsequent state changes that occur within 50 milliseconds of the recorded time.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} Pressing the `Increment' button reliably adds exactly 1 to a test variable, completely immune to how long the user holds the button down or how aggressively they press it.
+\end{itemize}
+\newpage
+\subsection*{Module 4.3: The Edit Mode State Machine (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Architect a robust software state machine that allows the user to safely interact with and modify the system's data.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{State Definition:} Create an enumeration: \verb|enum Mode { RUNNING, EDITING };| and a global state tracking variable.
+        \item \textbf{Mode Toggling:} Program the Pause/Play button to flip the system between \verb|RUNNING| and \verb|EDITING|. When in \verb|EDITING| mode, the timekeeping logic from Module 4.1 is bypassed (time pauses).
+        \item \textbf{Navigation:} Program the `Select' button to cycle a \verb|cursor| variable from 0 to 5, representing the currently selected display digit.
+        \item \textbf{Visual Feedback:} Modify the multiplexing loop. If the state is \verb|EDITING|, track \verb|millis()|. Every 500ms, toggle a boolean flag. If the flag is false, skip drawing the digit that matches the \verb|cursor|. This creates a blinking cursor effect without pausing the processor.
+        \item \textbf{Data Integrity:} Program the Increment/Decrement buttons to adjust the selected digit. Implement strict bounds checking (e.g., if \verb|cursor| is on the tens-of-minutes digit, it cannot be incremented past 5).
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The user can freely pause the clock, identify exactly which digit they are editing via the blinking effect, alter the time safely within real-world clock bounds, and resume normal operation.
+\end{itemize}
+
+\end{document}
