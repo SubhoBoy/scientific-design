@@ -1,0 +1,85 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+
+\title{Digital Design Training Program \\ \large Day 2: Logic Gates, Decoders \& State Machines}
+\author{Author,who}
+\date{April 1, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Theme: Dedicated hardware logic and managing state in software.}
+
+\subsection*{Module 2.1: Combinational Logic \& K-Maps (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Understand how digital circuits make decisions without software by using Boolean algebra.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Truth Tables:} Create a table for counting 0 to 9 in binary (0000 to 1001).
+        \item \textbf{Boolean Derivation:} Introduce Karnaugh Maps (K-Maps) as a visual way to simplify logic. Have students map out the logic required to determine when a counter should reset back to zero (e.g., detecting the number 10, or binary 1010).
+        \item \textbf{Math to Hardware:} Show how a derived equation like $Reset=Q_{3}\cdot Q_{1}$ directly translates to a physical AND gate connected to the 4th and 2nd bits of a binary signal.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} Understanding that software \verb|if| statements can be represented purely as mathematical equations and physical logic gates.
+\end{itemize}
+\newpage
+\subsection*{Module 2.2: Hardware Decoders - The 7447 IC (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Learn how to read an IC datasheet and use a hardware decoder to drastically reduce the number of pins required by the Arduino.
+    \item \textbf{Requirements:} 1x 7447 IC (BCD to 7-Segment Decoder), the 7-Segment Display from Day 1.
+    \item \textbf{Wiring Guide (Arduino $\to$ 7447 $\to$ 7-Segment):}
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Arduino Pin} & \textbf{7447 IC Pin} & \textbf{Function} \\
+\midrule
+Pin 8 & A (Input) & BCD Bit 0 (LSB) \\
+Pin 9 & B (Input) & BCD Bit 1 \\
+Pin 10 & C (Input) & BCD Bit 2 \\
+Pin 11 & D (Input) & BCD Bit 3 (MSB) \\
+- & a through g (Outputs) & Connect to 7-Seg A-G via 220$\Omega$ Resistors \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item Explain the 7447: It takes a 4-bit Binary Coded Decimal (BCD) input and outputs the complex 7-pin active-low signals automatically.
+        \item Wire the VCC, GND, and the Lamp Test/Blanking inputs of the 7447 to 5V (to keep them disabled).
+        \item Wire the Arduino to the 7447 inputs, and the 7447 outputs to the display.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} Only 4 Arduino pins are needed to control the display instead of 7.
+\end{itemize}
+\newpage
+\subsection*{Module 2.3: State Machines \& Rollovers (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Implement a software state machine to generate the BCD signals that feed the 7447 decoder.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{State Logic:} Create an integer variable \verb|count|.
+        \item Write a \verb|switch(count)| statement (or a function using bitwise masking, if comfortable) that translates the decimal \verb|count| into the 4 \verb|digitalWrite()| commands needed for the A, B, C, and D pins.
+\begin{verbatim}
+// Example snippet for outputting '3' (Binary 0011)
+digitalWrite(8, HIGH); // A
+digitalWrite(9, HIGH); // B
+digitalWrite(10, LOW); // C
+digitalWrite(11, LOW); // D
+\end{verbatim}
+        \item \textbf{Rollover:} Implement the logic so that \verb|count| increments every 500ms. If \verb|count > 9|, reset it to 0.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The breadboard now independently counts from 0 to 9 and rolls over smoothly. The system is a hybrid: software handles the state (counting) and hardware handles the rendering (7447 decoding).
+\end{itemize}
+
+\end{document}
