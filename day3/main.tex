@@ -1,0 +1,91 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{amsmath}
+
+\title{Digital Design Training Program \\ \large Day 3: Multiplexing and Hardware Timers}
+\author{Author,who}
+\date{April 1, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Theme: Wiring the display matrix and using visual persistence to drive 6 displays with the pins of only 1.}
+
+\subsection*{Module 3.1: The Multiplexing Matrix (Hardware) (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Understand how to daisy-chain data lines to save microcontroller pins, relying on power-switching to isolate individual components.
+    \item \textbf{Requirements:} 6x Common-Anode 7-Segment Displays, 1x 7447 IC, 6x PNP Transistors, Breadboards, Jumper Wire.
+    \item \textbf{Wiring Guide (The Display Bus):}
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llp{6.5cm}}
+\toprule
+\textbf{Component} & \textbf{Connection} & \textbf{Notes} \\
+\midrule
+Displays 1-6 & All \textbf{A} pins tied together, \textbf{B} together, etc. & Creates a shared 7-wire data bus. \\
+Shared Bus & 7447 Outputs (a-g) via 220$\Omega$ resistors & The 7447 determines \emph{what} number is shown. \\
+Transistor Emitters & 5V Power Supply & Provides current to the displays. \\
+Transistor Collectors & Individual Display Common Anodes & Acts as a gateway for the power. \\
+Transistor Bases & Arduino \verb|A0| through \verb|A5| via 1k$\Omega$ resistors & Determines \emph{which} display is allowed to turn on. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Concept:} If we wire all the displays in parallel, sending a ``3'' from the 7447 will make all 6 displays show a ``3''. To fix this, we control their power sources individually using PNP transistors.
+        \item \textbf{Active-Low Transistors:} A PNP transistor turns ON when its base is pulled \verb|LOW| (connected to ground).
+        \item Assemble the hardware matrix carefully. Neat wiring is critical here to avoid shorts on the data bus.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The hardware matrix is complete. There is separation of \emph{data} (the 7447 bus) and \emph{control} (the PNP transistors).
+\end{itemize}
+\newpage
+\subsection*{Module 3.2: Software Multiplexing (The Fast Loop) (45 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Exploit Persistence of Vision (POV) by rapidly flashing digits one by one so they appear to be continuously illuminated.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{Pin Setup:} Wire 4 Arduino digital pins (e.g., 8, 9, 10, 11) to the A, B, C, D inputs of the 7447.
+        \item \textbf{The Time Array:} Create a global array in code to hold the current clock values: \verb|int timeArray[6] = {1, 2, 3, 4, 5, 6};|.
+        \item \textbf{The Multiplexing Loop:} Write a \verb|for| loop in the \verb|loop()| function that iterates from 0 to 5.
+        \item \textbf{Inside the Loop:}
+        \begin{itemize}
+            \item Output \verb|timeArray[i]| in binary to the 4 digital pins feeding the 7447.
+            \item Turn ON digit \emph{i} by executing \verb|digitalWrite(analogPin[i], LOW);|.
+            \item Wait for a brief moment using \verb|delay(2);| (2 milliseconds).
+            \item Turn OFF digit \emph{i} by executing \verb|digitalWrite(analogPin[i], HIGH);|.
+        \end{itemize}
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The display shows ``123456'' cleanly. If the delay is increased to 100ms, the numbers are physically seen to be scanning across the displays, cementing the concept of POV.
+\end{itemize}
+\newpage
+\subsection*{Module 3.3: Bare-Metal Timers (Timer1 ISR) (60 Minutes)}
+
+\begin{itemize}
+    \item \textbf{Goal:} Generate a precise 10Hz ``tick'' in the background using hardware registers, preventing timekeeping from interfering with the rapid multiplexing loop.
+    \item \textbf{Action Steps:}
+    \begin{enumerate}[label=\arabic*.]
+        \item \textbf{The Problem with \texttt{delay()}:} If we use \verb|delay(1000)| to count seconds, the \verb|loop()| halts, the multiplexing stops, and only one digit will stay lit. We need the Arduino's hardware to count time in the background.
+        \item \textbf{CTC Mode:} Thus we use the 16-bit Timer1. We will use Clear Timer on Compare Match (CTC) mode. The timer counts up until it hits a specific number, triggers an interrupt, and resets to zero.
+        \item \textbf{The Math:} Using the 16MHz system clock and a prescaler of 256, calculate the top value (OCR1A) required for a 10Hz interrupt frequency:
+        \[
+        OCR1A=\frac{16000000}{256\cdot 10}-1=6249
+        \]
+        \item \textbf{The Implementation:} Write the bare-metal C code to configure the \verb|TCCR1A|, \verb|TCCR1B|, and \verb|TIMSK1| registers.
+        \item \textbf{The ISR:} Create the Interrupt Service Routine function: \verb|ISR(TIMER1_COMPA_vect)|. Inside, increment a global \verb|volatile int deciseconds;| variable.
+    \end{enumerate}
+    \item \textbf{Checkpoint:} The multiplexing continues smoothly in the \verb|loop()|, while an onboard LED toggles exactly 5 times a second (10Hz tick) purely driven by the ISR background process.
+\end{itemize}
+
+\end{document}
