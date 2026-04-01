@@ -4,63 +4,210 @@
 \geometry{margin=1in}
 \usepackage{hyperref}
 \usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  language=C++,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
 
 \title{Digital Design Training Program \\ \large Day 4: Timekeeping Logic \& User Interface}
-\author{Author,who}
+\author{Authored by }
 \date{April 1, 2026}
 
 \begin{document}
 
 \maketitle
 
-\section*{Theme: Cascading time logic, non-blocking hardware inputs, and building the Edit Mode state machine.}
+\section*{Theme: Implementing the core clock logic, handling user inputs robustly, and building the Edit Mode state machine.}
 
 \subsection*{Module 4.1: Cascading Time Logic (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Convert the raw 10Hz background tick into a readable 24-hour clock format.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{The Cascade:} Inside the \verb|loop()| (or a function called by it), constantly check the \verb|deciseconds| variable updated by the ISR.
-        \item Write the cascading reset logic:
-        \begin{itemize}
-            \item If \verb|deciseconds >= 10|: reset to 0, increment \verb|seconds|.
-            \item If \verb|seconds >= 60|: reset to 0, increment \verb|minutes|.
-            \item If \verb|minutes >= 60|: reset to 0, increment \verb|hours|.
-            \item If \verb|hours >= 24|: reset to 0.
-        \end{itemize}
-        \item \textbf{Data Mapping:} Break the raw time down into individual digits using modulo math and division. For example, \verb|timeArray[0] = hours / 10;| and \verb|timeArray[1] = hours % 10;|. Update the array so the multiplexer automatically renders the new time.
-    \end{enumerate}
-    \item \textbf{Checkpoint:} The hardware now functions perfectly as a 24-hour clock, ticking upward accurately without any visual stuttering on the displays.
+    \item \textbf{Goal:} Convert the raw 10Hz background ``tick'' from the Timer1 ISR into a human-readable 24-hour clock format and display it.
+    \item \textbf{Conceptual Overview:} The ISR gives us a steady pulse, incrementing \verb|deciseconds|. In our main loop, we will constantly check this variable. When it reaches 10, we know a full second has passed. This triggers a ``cascade'' where we reset the \verb|deciseconds| and increment \verb|seconds|. The same logic then applies to turn seconds into minutes, minutes into hours, and hours into days (by rolling over at 24).
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 4.1: Full Clock Logic}]
+// We need all the previous parts: BCD, digits, and the timer ISR
+const int bcd_pins[] = {8, 9, 10, 11};
+const int digit_pins[] = {A0, A1, A2, A3, A4, A5};
+const int N_DIGITS = 6;
+
+// --- Time Variables ---
+volatile int deciseconds = 0; // Updated by ISR
+int seconds = 0;
+int minutes = 0;
+int hours = 12; // Start at 12:00:00
+
+// This array is the ``single source of truth'' for the display.
+int time_arr[N_DIGITS] = {1, 2, 0, 0, 0, 0};
+
+// This function takes the time variables and maps them to the display array.
+void map_time_to_display_array() {
+  time_arr[0] = hours / 10;   // Tens-of-hours
+  time_arr[1] = hours % 10;   // Single hours
+  time_arr[2] = minutes / 10; // Tens-of-minutes
+  time_arr[3] = minutes % 10; // Single minutes
+  time_arr[4] = seconds / 10; // Tens-of-seconds
+  time_arr[5] = seconds % 10; // Single seconds
+}
+
+// This function contains the core cascading logic.
+void update_time() {
+  // Check if a second has passed.
+  if (deciseconds >= 10) {
+    deciseconds = 0; // Reset for the next second
+    seconds++;
+    if (seconds >= 60) {
+      seconds = 0;
+      minutes++;
+      if (minutes >= 60) {
+        minutes = 0;
+        hours++;
+        if (hours >= 24) {
+          hours = 0;
+        }
+      }
+    }
+    // After any change, we must update the display array.
+    map_time_to_display_array();
+  }
+}
+
+// ISR remains the same, just increments deciseconds
+ISR(TIMER1_COMPA_vect) {
+  deciseconds++;
+}
+
+void loop() {
+  // In the main loop, we constantly check and update the time,
+  // and then refresh the display.
+  update_time();
+  mux_update(); // The multiplexing function from Day 3
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} Your clock is now a fully functional 24-hour clock. The display is stable and the time updates accurately every second, driven by the hardware interrupt.
 \end{itemize}
 \newpage
 \subsection*{Module 4.2: Control Buttons \& Non-Blocking Debounce (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Read physical user inputs without blocking the processor or registering false double-clicks.
-    \item \textbf{Requirements:} 4x Pushbuttons (Pause/Play, Select, Increment, Decrement).
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item Wire the buttons from open digital pins directly to Ground. Configure them in setup using \verb|pinMode(pin, INPUT_PULLUP);|.
-        \item \textbf{State-Change Detection:} The software must act only when the button \emph{transitions} from \verb|HIGH| (unpressed) to \verb|LOW| (pressed), requiring the tracking of a \verb|lastButtonState| variable.
-        \item \textbf{Software Debouncing:} Mechanical switches literally bounce on a microscopic level, causing multiple rapid triggers. Introduce \verb|millis()| to record the time of a valid press. Ignore any subsequent state changes that occur within 50 milliseconds of the recorded time.
+    \item \textbf{Goal:} Read physical user inputs reliably without blocking the processor or registering false ``double-clicks''.
+    \item \textbf{Requirements:} 4x Pushbuttons (e.g., Pause/Play, Select, Increment, Decrement).
+    \item \textbf{Conceptual Overview:} Mechanical buttons are messy. When you press one, the metal contacts ``bounce'' for a few milliseconds, creating a rapid series of on-off signals. A naive \verb|digitalRead()| would see this as multiple presses. We need a non-blocking way to (1) detect only the first press and (2) ignore the subsequent bounces.
+    \item \textbf{The Debounce Strategy:}
+    \begin{enumerate}
+        \item \textbf{State Change Detection:} Don't act just because a button is \verb|LOW|. Act only when it \emph{changes} from \verb|HIGH| to \verb|LOW|. This requires storing the button's \verb|last_state|.
+        \item \textbf{Timing:} After detecting a valid \verb|HIGH| to \verb|LOW| transition, record the time using \verb|millis()|. Ignore any further transitions on that button until a certain amount of time (e.g., 50ms) has passed.
     \end{enumerate}
-    \item \textbf{Checkpoint:} Pressing the `Increment' button reliably adds exactly 1 to a test variable, completely immune to how long the user holds the button down or how aggressively they press it.
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 4.2: A Robust Button Handler}]
+const int BTN_PIN = 4; // Example for one button
+
+int last_btn_state = HIGH; // Assume button is not pressed initially
+unsigned long last_debounce_time = 0;
+const unsigned long DEBOUNCE_DELAY = 50; // 50ms
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(BTN_PIN, INPUT_PULLUP);
+}
+
+void check_button() {
+  int current_reading = digitalRead(BTN_PIN);
+
+  // Check for a state change: was HIGH, is now LOW.
+  if (current_reading == LOW && last_btn_state == HIGH) {
+    // Check if enough time has passed since the last valid press.
+    if (millis() - last_debounce_time > DEBOUNCE_DELAY) {
+      // --- THIS IS WHERE YOU PUT YOUR ACTION ---
+      Serial.println(``Button Pressed!'');
+      // --- END OF ACTION ---
+
+      // Record the time of this valid press.
+      last_debounce_time = millis();
+    }
+  }
+  
+  // Save the current state for the next loop iteration.
+  last_btn_state = current_reading;
+}
+
+void loop() {
+  // In the main loop, you just call your button checker.
+  // It doesn't block the rest of your code.
+  check_button();
+  // Your multiplexing code would also go here.
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} Open the Serial Monitor. Press and hold the button. The message ``Button Pressed!'' appears only once. Release and press again quickly. It still only registers one press per distinct push.
 \end{itemize}
 \newpage
 \subsection*{Module 4.3: The Edit Mode State Machine (60 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Architect a robust software state machine that allows the user to safely interact with and modify the system's data.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{State Definition:} Create an enumeration: \verb|enum Mode { RUNNING, EDITING };| and a global state tracking variable.
-        \item \textbf{Mode Toggling:} Program the Pause/Play button to flip the system between \verb|RUNNING| and \verb|EDITING|. When in \verb|EDITING| mode, the timekeeping logic from Module 4.1 is bypassed (time pauses).
-        \item \textbf{Navigation:} Program the `Select' button to cycle a \verb|cursor| variable from 0 to 5, representing the currently selected display digit.
-        \item \textbf{Visual Feedback:} Modify the multiplexing loop. If the state is \verb|EDITING|, track \verb|millis()|. Every 500ms, toggle a boolean flag. If the flag is false, skip drawing the digit that matches the \verb|cursor|. This creates a blinking cursor effect without pausing the processor.
-        \item \textbf{Data Integrity:} Program the Increment/Decrement buttons to adjust the selected digit. Implement strict bounds checking (e.g., if \verb|cursor| is on the tens-of-minutes digit, it cannot be incremented past 5).
+    \item \textbf{Goal:} Architect a robust software state machine that allows the user to pause the clock, select a digit, and modify the time safely.
+    \item \textbf{Conceptual Overview:} We will define two main states for our clock: \verb|RUNNING| and \verb|EDITING|. The program will behave differently depending on which state it's in. This is the foundation of almost all interactive software.
+    \item \textbf{Action Steps \& Code:}
+    \begin{enumerate}
+        \item \textbf{State Definition:} Use an \verb|enum| to create a new data type for our states. This makes the code much more readable than using numbers.
+        \begin{lstlisting}
+enum Mode { RUNNING, EDITING };
+Mode current_mode = RUNNING; // Start in RUNNING mode
+int cursor_position = 0; // Which digit is selected (0-5)
+        \end{lstlisting}
+        \item \textbf{Mode Toggling:} The Pause/Play button will flip the \verb|current_mode|. When entering \verb|EDITING| mode, we stop the ISR from incrementing time.
+        \item \textbf{Visual Feedback (Blinking):} In \verb|EDITING| mode, we need a blinking cursor. We do this with another non-blocking \verb|millis()| check inside the multiplexing loop. If the cursor is on the current digit, we simply skip turning it on for half a second, making it disappear.
+        \item \textbf{Data Integrity (Bounds Checking):} This is critical. When the user presses ``Increment'' on the tens-of-minutes digit, it must roll over from 5 back to 0, not go to 6. This requires a \verb|switch| statement or \verb|if/else| chain based on the \verb|cursor_position|.
     \end{enumerate}
-    \item \textbf{Checkpoint:} The user can freely pause the clock, identify exactly which digit they are editing via the blinking effect, alter the time safely within real-world clock bounds, and resume normal operation.
+\begin{lstlisting}[caption={Code for Module 4.3: Simplified Edit Logic}]
+// Inside your button handler, for the Increment button:
+if (current_mode == EDITING) {
+  // Get the current value of the two digits being edited
+  int* tens_digit = &time_arr[cursor_position - (cursor_position % 2)];
+  int* ones_digit = &time_arr[cursor_position - (cursor_position % 2) + 1];
+  
+  // Example for minutes
+  if (cursor_position == 2 || cursor_position == 3) {
+      int current_mins = (*tens_digit * 10) + *ones_digit;
+      current_mins = (current_mins + 1) % 60; // Increment and wrap around 60
+      *tens_digit = current_mins / 10;
+      *ones_digit = current_mins % 10;
+  }
+  // Add similar logic for hours (0-23) and seconds (0-59)
+}
+\end{lstlisting}
+    \item \textbf{The Main Loop Re-architected:}
+\begin{lstlisting}
+// The ISR is modified to check the mode
+ISR(TIMER1_COMPA_vect) {
+  if (current_mode == RUNNING) {
+    deciseconds++;
+  }
+}
+
+void loop() {
+  // 1. Handle Inputs
+  check_all_buttons(); // This function might change our mode or cursor
+
+  // 2. Update State
+  if (current_mode == RUNNING) {
+    update_time(); // The cascading logic from 4.1
+  }
+  
+  // 3. Update Display
+  mux_update(); // The multiplexer now contains the blinking logic
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} The clock is now fully interactive. You can pause it, the selected digit blinks, you can move the cursor, and incrementing/decrementing the time follows real-world rules (e.g., minutes don't go past 59). You can then resume the clock, and it continues from the new time you set.
 \end{itemize}
 
 \end{document}

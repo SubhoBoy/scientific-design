@@ -1,71 +1,226 @@
 \documentclass[11pt,a4paper]{article}
+\usepackage{xcolor}
 \usepackage[utf8]{inputenc}
 \usepackage{geometry}
 \geometry{margin=1in}
 \usepackage{hyperref}
 \usepackage{enumitem}
+\usepackage{listings}
+
+\lstset{
+  language=C,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
 
 \title{Digital Design Training Program \\ \large Day 9: Data Structures and Parsing Algorithms}
-\author{Author,who}
+\author{Authored by }
 \date{April 1, 2026}
 
 \begin{document}
 
 \maketitle
 
-\section*{Theme: Translating human-readable mathematical equations into a format that the microcontroller can process, using fundamental computer science algorithms and custom memory-safe C structures.}
+\section*{Theme: Translating human-readable equations into a machine-processable format using fundamental computer science algorithms and memory-safe C structures.}
 
 \subsection*{Module 9.1: Embedded Memory \& Static Stacks (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Understand the severe dangers of dynamic memory allocation (\verb|malloc|/\verb|free|) on a microcontroller with only 2KB of SRAM, and build memory-safe static data structures.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{The Heap Fragmentation Problem:} Using standard C++ \verb|std::stack| or C's \verb|malloc()| is dangerous on AVR. Creating and destroying nodes rapidly during math calculations will fragment the tiny SRAM, inevitably causing a silent crash (Stack Overflow).
-        \item \textbf{The Static Alternative:} Build fixed-size arrays. We will define a strict limit: our calculator can only process equations with up to 32 tokens.
-        \item \textbf{Building the \texttt{struct}:} Write a custom Stack structure in C.
-\begin{verbatim}
+    \item \textbf{Goal:} Understand the dangers of dynamic memory allocation (\verb|malloc|/\verb|free|) on a microcontroller and build a memory-safe, statically allocated stack.
+    \item \textbf{Conceptual Overview:} On a PC with gigabytes of RAM, asking the operating system for memory (\verb|malloc|) is common. On a microcontroller with just 2KB of SRAM, this is a recipe for disaster. The ``Heap'' (where \verb|malloc| gets memory) can become fragmented, leaving small, unusable gaps. Eventually, a request for memory will fail, causing a silent, hard-to-debug crash.
+    \item \textbf{The Solution: Static Allocation.} We will pre-allocate all the memory our program will ever need when we compile it. For our calculator's stacks, we will use fixed-size arrays. This is memory-safe and predictable.
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 9.1: A Memory-Safe Static Stack}]
+#include <stdio.h> // For NULL
+
+#define STACK_SIZE 32 // Define a hard limit for our stack
+
+// A C structure to hold our stack's data and state.
 typedef struct {
-    float data[32]; // Fixed-size array for memory safety
-    int top;        // Index of the top element
+    float data[STACK_SIZE]; // The fixed-size array for data
+    int top;                // Index of the top element, -1 if empty
 } FloatStack;
-\end{verbatim}
-        \item \textbf{Pointer Manipulation:} Write the core functions \verb|push(FloatStack *s, float val)| and \verb|pop(FloatStack *s)|. Note that passing the stack by reference (using the \verb|*| pointer) prevents the Arduino from copying the entire 32-element array every time a function is called.
-    \end{enumerate}
-    \item \textbf{Checkpoint:} Instantiate the \verb|FloatStack|, pass it via pointers, and safely push/pop values without crashing the microcontroller.
+
+// Initialize the stack. Takes a POINTER to the stack struct.
+void fstack_init(FloatStack *s) {
+    s->top = -1;
+}
+
+// Push a value onto the stack.
+// Returns 0 on success, -1 on failure (stack full).
+int fstack_push(FloatStack *s, float value) {
+    if (s->top >= STACK_SIZE - 1) {
+        return -1; // Error: Stack Overflow
+    }
+    s->data[++s->top] = value;
+    return 0;
+}
+
+// Pop a value from the stack.
+// Returns the value, or 0.0f if the stack was empty.
+float fstack_pop(FloatStack *s) {
+    if (s->top < 0) {
+        return 0.0f; // Error: Stack Underflow
+    }
+    return s->data[s->top--];
+}
+
+int main(void) {
+    // Instantiate the stack. It lives on the main() call stack.
+    FloatStack my_stack;
+    
+    // Pass a POINTER to the stack to our functions.
+    // This is efficient; we don't copy the whole 32-element array.
+    fstack_init(&my_stack);
+    
+    fstack_push(&my_stack, 3.14f);
+    fstack_push(&my_stack, 1.618f);
+    
+    // float val = fstack_pop(&my_stack); // val is now 1.618f
+    
+    while(1) {}
+    return 0;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} You can create and use a custom, statically-allocated stack, passing it by reference (pointer) to functions to efficiently and safely manipulate its contents.
 \end{itemize}
 \newpage
 \subsection*{Module 9.2: Lexical Analysis (Tokenization) (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Teach the program how to group individual keypad character presses into meaningful mathematical ``Tokens'' (e.g., turning the characters `1', `2', `.', `5' into the single float \verb|12.5|).
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{The Input Buffer:} Create a global \verb|char input_buffer[32]| to store exactly what the user types on the matrix keypad.
-        \item \textbf{Parsing Logic:} Write a loop that iterates through the buffer. Implement logic that checks if a character is a digit or a decimal point.
-        \item \textbf{String to Float:} When the loop encounters an operator (like \verb|+| or \verb|*|), it means the number is finished. Use the standard C function \verb|atof()| (ASCII to Float) to convert the gathered digit characters into a real 32-bit \verb|float|.
-        \item \textbf{Operator Tagging:} Create an \verb|enum| to classify non-number tokens (e.g., \verb|OP_ADD|, \verb|OP_MULT|, \verb|OP_SIN|, \verb|OP_LPAREN|).
-    \end{enumerate}
-    \item \textbf{Checkpoint:} If a user types \verb|12.5+sin(3)| on the keypad, the software successfully breaks it down into four distinct tokens: \verb|[Float: 12.5]|, \verb|[Operator: +]|, \verb|[Function: sin]|, \verb|[Float: 3]|.
+    \item \textbf{Goal:} Convert a raw string of characters from the keypad into a sequence of meaningful mathematical ``tokens''.
+    \item \textbf{Conceptual Overview:} A computer doesn't understand ``12.5 + sin(3)''. It first needs to break this string into a list of ``words'' or tokens. This process is called lexical analysis or tokenization.
+    \begin{center}
+    \verb|"12.5+sin(3)"| $\rightarrow$ \verb|[NUMBER:"12.5"]|, \verb|[OPERATOR:"+"]|, \verb|[FUNCTION:"sin"]|, \verb|[LPAREN:"("]|, \verb|[NUMBER:"3"]|, \verb|[RPAREN:")"]|
+    \end{center}
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 9.2: A Simple Tokenizer}]
+#include <string.h>
+#include <ctype.h> // For isdigit, isalpha, isspace
+
+// An enum to define all possible token types
+typedef enum {
+    T_NONE, T_NUMBER, T_OPERATOR, T_FUNCTION, T_LPAREN, T_RPAREN
+} TokenType;
+
+// A struct to hold one token
+typedef struct {
+    TokenType type;
+    char value[16]; // The string representation of the token
+} Token;
+
+// The tokenizer function
+int tokenize(const char* input_str, Token* tokens, int max_tokens) {
+    int count = 0;
+    const char* p = input_str;
+
+    while (*p != `\0' && count < max_tokens) {
+        if (isspace(*p)) { p++; continue; } // Skip whitespace
+
+        // Group digits and `.' into a NUMBER token
+        if (isdigit(*p) || *p == `.') {
+            const char* start = p;
+            while (isdigit(*p) || *p == `.') p++;
+            int len = p - start;
+            tokens[count].type = T_NUMBER;
+            strncpy(tokens[count].value, start, len);
+            tokens[count].value[len] = `\0';
+            count++;
+            continue;
+        }
+
+        // Handle single-character operators
+        if (strchr(``+-*/^'', *p)) {
+            tokens[count].type = T_OPERATOR;
+            tokens[count].value[0] = *p;
+            tokens[count].value[1] = `\0';
+            count++; p++;
+            continue;
+        }
+        
+        // ... Add similar blocks for parentheses and functions (isalpha) ...
+        
+        p++; // Failsafe for unknown characters
+    }
+    return count;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} Given a mathematical expression as a C string, your \verb|tokenize| function can successfully produce an array of \verb|Token| structs, correctly identifying and classifying each part of the expression.
 \end{itemize}
 \newpage
-\subsection*{Module 9.3: Dijkstra's Shunting Yard Algorithm (90 Minutes)}
+\subsection*{Module 9.3: Dijkstra's Shunting-Yard Algorithm (90 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Solve the Order of Operations (BODMAS) problem by converting standard ``Infix'' notation (e.g., \verb|3 + 4 * 2|) into Reverse Polish Notation (RPN) (e.g., \verb|3 4 2 * +|), which a computer can solve linearly.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Operator Precedence:} Assign a numerical weight to operations. \verb|+| and \verb|-| have a weight of 1, \verb|*| and \verb|/| have 2, \verb|^| (power) has 3, and scientific functions (\verb|sin|, \verb|ln|) have 4.
-        \item \textbf{The Two-Structure System:} Understand Dijkstra's method. You need an ``Output Queue'' (for the final RPN string) and an ``Operator Stack'' (using the struct from Module 9.1).
-        \item \textbf{Algorithm Implementation:} Code the core rules:
-        \begin{itemize}
-            \item If the token is a number, push it straight to the Output Queue.
-            \item If it's a function (\verb|sin|), push it to the Operator Stack.
-            \item If it's an operator, pop higher-precedence operators from the Stack to the Queue, then push the new operator to the Stack.
-            \item If it's a left parenthesis \verb|(|, push it. If it's a right parenthesis \verb|)|, pop operators to the Queue until you hit the left one.
-        \end{itemize}
+    \item \textbf{Goal:} Convert the tokenized ``infix'' expression into ``Reverse Polish Notation'' (RPN) to easily solve the order of operations problem.
+    \item \textbf{Conceptual Overview:} Humans write \verb|3 + 4 * 2|. A simple computer prefers \verb|3 4 2 * +|. This is RPN. It can be solved linearly with a single stack: read a token; if it's a number, push it to the stack. If it's an operator, pop two numbers, perform the operation, and push the result back. The Shunting-Yard algorithm is the classic method for converting from infix to RPN.
+    \item \textbf{The Algorithm:} You need one queue for your RPN output and one stack for operators.
+    \begin{enumerate}
+        \item Read a token.
+        \item If it's a number, push it to the output queue.
+        \item If it's a function or a left parenthesis, push it to the operator stack.
+        \item If it's an operator (e.g., \verb|+|): While the operator on top of the stack has greater or equal precedence, pop it to the output queue. Then, push the current operator to the stack.
+        \item If it's a right parenthesis: Pop operators from the stack to the queue until you find a left parenthesis. Discard both parentheses. If the token on top of the stack is now a function, pop it to the queue.
+        \item When all tokens are read, pop any remaining operators from the stack to the queue.
     \end{enumerate}
-    \item \textbf{Checkpoint:} User can input a complex string like \verb|3+4*2/(1-5)^2| into their code, and the serial monitor correctly prints out the mathematical RPN equivalent.
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 9.3: Shunting-Yard Implementation}]
+// --- Assume Tokenizer and a Token-based Stack are defined ---
+
+// Function to get operator precedence
+int get_precedence(const Token* t) {
+    if (t->type == T_FUNCTION) return 4;
+    if (t->type != T_OPERATOR) return 0;
+    switch (t->value[0]) {
+        case `^': return 3;
+        case `*': case `/': return 2;
+        case `+': case `-': return 1;
+        default: return 0;
+    }
+}
+
+// The main shunting-yard function
+int shunt(Token* infix, int infix_len, Token* rpn_queue) {
+    int rpn_len = 0;
+    TokenStack op_stack;
+    tstack_init(&op_stack);
+
+    for (int i = 0; i < infix_len; i++) {
+        Token t = infix[i];
+        if (t.type == T_NUMBER) {
+            rpn_queue[rpn_len++] = t; // Rule 2
+        } else if (t.type == T_FUNCTION || t.type == T_LPAREN) {
+            tstack_push(&op_stack, t); // Rule 3
+        } else if (t.type == T_OPERATOR) {
+            // Rule 4
+            while (op_stack.top > -1 && get_precedence(&tstack_peek(&op_stack)) >= get_precedence(&t)) {
+                rpn_queue[rpn_len++] = tstack_pop(&op_stack);
+            }
+            tstack_push(&op_stack, t);
+        } else if (t.type == T_RPAREN) {
+            // Rule 5
+            while (op_stack.top > -1 && tstack_peek(&op_stack).type != T_LPAREN) {
+                rpn_queue[rpn_len++] = tstack_pop(&op_stack);
+            }
+            tstack_pop(&op_stack); // Discard left parenthesis
+            if (op_stack.top > -1 && tstack_peek(&op_stack).type == T_FUNCTION) {
+                rpn_queue[rpn_len++] = tstack_pop(&op_stack);
+            }
+        }
+    }
+    // Rule 6: Pop remaining operators
+    while (op_stack.top > -1) {
+        rpn_queue[rpn_len++] = tstack_pop(&op_stack);
+    }
+    return rpn_len;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} Your \verb|shunt| function can take the token array for \verb|3+4*2/(1-5)^2| and correctly produce the RPN token array: \verb|3 4 2 * 1 5 - 2 ^ / +|.
 \end{itemize}
 
 \end{document}

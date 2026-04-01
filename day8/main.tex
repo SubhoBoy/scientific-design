@@ -1,13 +1,27 @@
 \documentclass[11pt,a4paper]{article}
+\usepackage{xcolor}
 \usepackage[utf8]{inputenc}
 \usepackage{geometry}
 \geometry{margin=1in}
 \usepackage{hyperref}
 \usepackage{enumitem}
 \usepackage{amsmath}
+\usepackage{listings}
+
+\lstset{
+  language=C,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
 
 \title{Digital Design Training Program \\ \large Day 8: Embedded Math Algorithms}
-\author{Author,who}
+\author{Authored by }
 \date{April 1, 2026}
 
 \begin{document}
@@ -19,63 +33,180 @@
 \subsection*{Module 8.1: RK4 Engine Implementation (60 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Translate continuous mathematical models into discrete, executable C code using the 4th-Order Runge-Kutta (RK4) method.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{The RK4 Algorithm:} Review the RK4 formulas (calculating the four slopes: $k_{1}, k_{2}, k_{3}, k_{4}$).
-        \item \textbf{Function Pointers in C:} To make the RK4 engine reusable for different math functions, teach students how to pass a function as an argument.
-        \item \textbf{Writing the Engine:} Write the core \verb|float rk4_step(...)| function. It will take the current \verb|x|, current \verb|y|, step size \verb|h|, and a \verb|float (*deriv)(float, float)| function pointer.
-        \item \textbf{The Loop:} Write a wrapper function that loops the \verb|rk4_step| from $x_{0}$ to the user's target $x_{target}$.
-    \end{enumerate}
-    \item \textbf{Checkpoint:} The C code correctly compiles a generic RK4 solver capable of taking any derivative function and stepping forward to an approximate answer.
+    \item \textbf{Goal:} Implement a generic, reusable 4th-Order Runge-Kutta (RK4) engine in C to serve as the core of our custom math library.
+    \item \textbf{Conceptual Overview:} Euler's method (Day 7) is simple but accumulates errors quickly. The RK4 method is a significant improvement. Instead of using the slope at the start of an interval, it cleverly samples the slope at four different points within the interval and takes a weighted average. This results in a much more accurate prediction of the next point.
+    \item \textbf{Function Pointers:} To make our RK4 engine generic, we need to pass it the derivative function we want to solve (e.g., \verb|y'=y| for \verb|exp(x)|). In C, we can pass functions as arguments using \textbf{function pointers}.
+    \begin{itemize}
+        \item A normal function declaration is \verb|float my_func(float x, float y);|
+        \item A pointer to such a function is declared as \verb|float (*my_func_ptr)(float x, float y);|
+        \item We can use \verb|typedef| to create a clean alias: \verb|typedef float (*deriv_func)(float, float);| Now \verb|deriv_func| is a new type representing a pointer to our kind of derivative function.
+    \end{itemize}
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 8.1: Generic RK4 Solver}]
+#include <stdio.h> // For NULL
+
+// Use a typedef to create a new type for our function pointers.
+// This type, `deriv_f', is a pointer to any function that
+// takes two floats and returns a float.
+typedef float (*deriv_f)(float x, float y);
+
+// The core RK4 calculation for a single step.
+float rk4_step(float x, float y, float h, deriv_f df) {
+    // Calculate the four slopes (k1, k2, k3, k4)
+    float k1 = h * df(x, y);
+    float k2 = h * df(x + 0.5 * h, y + 0.5 * k1);
+    float k3 = h * df(x + 0.5 * h, y + 0.5 * k2);
+    float k4 = h * df(x + h, y + k3);
+    
+    // Return the weighted average
+    return y + (k1 + 2.0*k2 + 2.0*k3 + k4) / 6.0;
+}
+
+// A wrapper function to solve from a start to an end point.
+float rk4_solve(float x0, float y0, float x_target, deriv_f df) {
+    float x = x0;
+    float y = y0;
+    const float h = 0.01; // A reasonably small step size
+    int num_steps = (int)((x_target - x0) / h);
+
+    for (int i = 0; i < num_steps; i++) {
+        y = rk4_step(x, y, h, df);
+        x += h;
+    }
+
+    // If x_target was not an exact multiple of h,
+    // take one final, smaller step to reach it exactly.
+    float remaining_h = x_target - x;
+    if (remaining_h > 1e-6) { // Use a small epsilon for float comparison
+        y = rk4_step(x, y, remaining_h, df);
+    }
+
+    return y;
+}
+
+// Example derivative function for y' = y
+float deriv_exp(float x, float y) {
+    return y;
+}
+
+int main(void) {
+    // Example of how to use the solver to find e^1
+    // float e_approx = rk4_solve(0.0, 1.0, 1.0, deriv_exp);
+    // printf(``e^1 is approximately %f\n'', e_approx);
+    return 0;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} You have a generic C function, \verb|rk4_solve|, that can numerically approximate the solution to any first-order ODE given a starting point and a target.
 \end{itemize}
 \newpage
 \subsection*{Module 8.2: Trig \& Logs via RK4 and Custom Formatting (60 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Feed the ODEs from Day 7 into the RK4 engine to calculate values, and write a custom lightweight formatter to display \verb|float| results on the LCD.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Defining the Derivatives:} Write the simple C functions for the derivatives (e.g., \verb|float deriv_exp(float x, float y) { return y; }|).
-        \item \textbf{Execution:} Call the RK4 engine to calculate $e^{2}$ or $\sin(1.57)$ using standard 32-bit \verb|float| variables.
-        \item \textbf{The Display Problem:} Standard \verb|sprintf()| to convert a float to a string for the LCD is massive (it can consume up to 1.5KB of Flash).
-        \item \textbf{Custom Float-to-String:} Write a lightweight C function to bypass \verb|sprintf()|.
-        \begin{itemize}
-            \item Cast the float to an \verb|int| to extract the whole number.
-            \item Subtract the integer from the float to isolate the decimal.
-            \item Multiply the decimal by 1000 (for 3 decimal places) and cast to \verb|int|.
-            \item Print: \verb|lcd_print(itoa(whole_num))|, then \verb|lcd_print(".")|,\\ then \verb|lcd_print(itoa(fraction_num))|.
-        \end{itemize}
-    \end{enumerate}
-    \item \textbf{Checkpoint:} The LCD displays the numerically integrated value of $e^{2}$ as roughly \verb|7.389|. Built a math library from scratch.
+    \item \textbf{Goal:} Use the RK4 engine to calculate transcendental functions and develop a lightweight \verb|float|-to-string converter to display the results.
+\item \textbf{The Problem with }\verb|sprintf|: The standard C library function \verb|sprintf| is incredibly powerful, but linking in its floating-point conversion module can add over 1.5KB to your program size. On a chip with only 32KB of Flash, this is unacceptable. We must write our own.
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 8.2: Custom Float-to-ASCII}]
+#include <stdlib.h> // For itoa()
+
+// --- Assume rk4_solve() and lcd driver are included ---
+
+// A lightweight float-to-string function
+void ftoa(float val, char* buf, int precision) {
+    // Handle negative numbers
+    if (val < 0) {
+        *buf++ = `-';
+        val = -val;
+    }
+
+    // Extract the integer part
+    long integer_part = (long)val;
+    itoa(integer_part, buf, 10); // Convert integer to string
+
+    // Move buffer pointer to the end of the integer string
+    while (*buf != `\0') {
+        buf++;
+    }
+    
+    // Add the decimal point
+    *buf++ = `.';
+
+    // Extract the fractional part
+    float fractional_part = val - integer_part;
+
+    // Multiply by 10^precision to make it an integer
+    for (int i = 0; i < precision; i++) {
+        fractional_part *= 10.0;
+    }
+
+    // Convert the new fractional integer to string
+    itoa((long)fractional_part, buf, 10);
+}
+
+// Derivative for y' = y
+float deriv_exp(float x, float y) { return y; }
+
+int main(void) {
+    lcd_init();
+    lcd_print(``Calculating e^2...'');
+    _delay_ms(1000);
+    
+    // Use the RK4 engine to solve y'=y from y(0)=1 to x=2
+    float result = rk4_solve(0.0, 1.0, 2.0, deriv_exp);
+    
+    char result_str[16];
+    ftoa(result, result_str, 3); // Convert with 3 decimal places
+
+    lcd_cmd(0x01); // Clear screen
+    lcd_print(``e^2 approx: '');
+    lcd_print(result_str);
+
+    while(1) {}
+    return 0;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} The LCD displays the numerically integrated value of $e^{2}$ as approximately \verb|7.389|. You have successfully built and displayed the result of a custom math library.
 \end{itemize}
 \newpage
-\subsection*{Module 8.3: The Fast Inverse Square Root Algorithm (15 Minutes)}
+\subsection*{Module 8.3: The Fast Inverse Square Root (15 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Implement the legendary Quake III algorithm to see how memory manipulation and pointer casting can bypass processor limitations for extreme performance.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{The Bottleneck:} Standard square root calculation (even RK4) is slow. In graphics (and our calculator), we often need $1/\sqrt{x}$.
-        \item \textbf{Bit-Level Hacking:} The core concept is treating the memory address of a floating-point number as a standard 32-bit integer to perform extremely fast pseudo-logarithmic shifting.
-        \item \textbf{Implementation:} Type out the famous algorithm strictly in C:
-\begin{verbatim}
+    \item \textbf{Goal:} Witness and implement the legendary Quake III algorithm to see how ``illegal'' bit-level hacking can achieve massive performance gains.
+    \item \textbf{Conceptual Overview:} Calculating $1/\sqrt{x}$ is slow. This algorithm, made famous by the game Quake III Arena, achieves it with incredible speed by exploiting the way floating-point numbers are stored in memory. It's a classic example of brilliant, if mind-bending, low-level optimization.
+    \item \textbf{The ``Magic'':}
+    \begin{enumerate}
+        \item It takes the 32-bit float, \verb|y|, and re-interprets its memory location as a 32-bit integer, \verb|i|. This is called pointer casting and is technically ``undefined behavior'' in C, but it works on most compilers.
+        \item It performs a single bit-shift (\verb|i >> 1|) and subtracts the result from a ``magic number'' (\verb|0x5f3759df|). This integer operation is a lightning-fast approximation of a logarithm, which effectively calculates a rough inverse square root.
+        \item It casts the bits back to a float.
+        \item It performs one round of the Newton-Raphson method to polish the initial guess, making it much more accurate.
+    \end{enumerate}
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 8.3: Fast Inverse Square Root}]
+#include <stdint.h> // For int32_t
+
 float Q_rsqrt( float number ) {
-    long i;
+    int32_t i;
     float x2, y;
     const float threehalfs = 1.5F;
+
     x2 = number * 0.5F;
     y  = number;
-    i  = * ( long * ) &y;                       
-    i  = 0x5f3759df - ( i >> 1 );               
-    y  = * ( float * ) &i;                      
-    y  = y * ( threehalfs - ( x2 * y * y ) );   
+    
+    // Evil floating point bit level hacking
+    i  = * ( int32_t * ) &y;
+    
+    // What the fuck?
+    i  = 0x5f3759df - ( i >> 1 );
+    
+    // Cast bits back to float
+    y  = * ( float * ) &i;
+    
+    // 1st iteration of Newton's method for refinement
+    y  = y * ( threehalfs - ( x2 * y * y ) );
+    
     return y;
 }
-\end{verbatim}
-        \item \textbf{Execution:} Pass a number into the function, convert the returned float using the custom string formatter, and display it on the LCD.
-    \end{enumerate}
-    \item \textbf{Checkpoint:} The microcontroller computes $1/\sqrt{x}$ almost instantly. Understanding the raw power of C pointers and memory casting on an embedded system.
+\end{lstlisting}
+    \item \textbf{Checkpoint:} You can now calculate $1/\sqrt{x}$ almost instantly. This demonstrates the raw power of C pointers and memory casting, showing that sometimes, for performance, you have to break the rules.
 \end{itemize}
 
 \end{document}

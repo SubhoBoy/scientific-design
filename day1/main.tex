@@ -5,49 +5,78 @@
 \usepackage{hyperref}
 \usepackage{booktabs}
 \usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  language=C++,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
 
 \title{Digital Design Training Program \\ \large Day 1: Mobile Setup, Core I/O, and the 7-Segment Display}
-\author{Author,who}
+\author{Authored by }
 \date{April 1, 2026}
 
 \begin{document}
 
 \maketitle
 
-\section*{Theme: Establishing software toolchain and mastering basic hardware outputs.}
+\section*{Theme: Establishing a professional software toolchain and mastering basic hardware outputs.}
 
 \subsection*{Module 1.1: The Mobile Toolchain (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Understand how code becomes a compiled binary (\verb|.hex|) and how to flash it to a microcontroller using a mobile environment.
+    \item \textbf{Goal:} Understand how C++ code becomes a compiled binary (\verb|.hex|) and how to flash it to a microcontroller using a mobile environment. This module establishes a powerful, repeatable, and professional development workflow on an Android device.
     \item \textbf{Requirements:} Android phone, OTG adapter, USB cable, Arduino Uno.
+    \item \textbf{Conceptual Overview:} You write human-readable C++ code, a \textbf{compiler} (PlatformIO) translates it into machine-readable instructions (a \verb|.hex| file), and a \textbf{programmer} (ArduinoDroid) ``flashes'' these instructions into the microcontroller's permanent memory.
     \item \textbf{Steps \& Guide:}
     \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Environment Prep:} Install \textbf{Termux} (via F-Droid) and \textbf{ArduinoDroid} (via Play Store). Run \verb|termux-setup-storage| in Termux to grant it access to your phone's internal storage.
-        \item \textbf{Linux Subsystem:} We need a proper Linux environment to run the PlatformIO toolchain. Run:
+        \item \textbf{Environment Prep:} Install \textbf{Termux} from F-Droid and \textbf{ArduinoDroid} from the Play Store. Termux provides a powerful Linux-like terminal on your phone. ArduinoDroid provides the drivers and interface to communicate with the Arduino board.
         \begin{itemize}
-            \item \verb|pkg install proot-distro| \textit{(Installs the manager for Linux distributions)}
-            \item \verb|proot-distro install debian| \textit{(Downloads a Debian Linux filesystem)}
-            \item \verb|proot-distro login debian| \textit{(Logs you into your new isolated Linux environment)}
+            \item In Termux, run \verb|termux-setup-storage|. This is a critical step that creates a `storage` folder inside Termux, which is a symbolic link to your phone's user-accessible internal storage (e.g., `/sdcard/` or `/storage/emulated/0/`). This allows you to easily move files between the Termux environment and the rest of your phone.
         \end{itemize}
-        \item \textbf{Compiler Installation:} Inside Debian, install Python and PlatformIO:
+        \item \textbf{Linux Subsystem Setup:} While Termux is good, many professional tools expect a standard Linux environment (like Debian or Ubuntu). We will install a lightweight Debian system inside Termux.
         \begin{itemize}
-            \item \verb|apt update && apt install python3 python3-venv|
-            \item \verb|python3 -m venv pio_env| \textit{(Creates an isolated space for Python packages)}
-            \item \verb|source pio_env/bin/activate| \textit{(Activates the environment)}
-            \item \verb|pip install platformio| \textit{(Installs the actual C/C++ compiler and build tools)}
+            \item \verb|pkg install proot-distro|: This installs the tool that manages these Linux subsystems.
+            \item \verb|proot-distro install debian|: This downloads and sets up a minimal Debian Linux environment inside a folder in Termux. It is completely isolated from your core Android system.
+            \item \verb|proot-distro login debian|: This command ``enters'' the Debian environment. Your terminal prompt will change, indicating you are now operating inside Debian.
         \end{itemize}
-        \item \textbf{The Build Pipeline:} Initialize a project (\verb|pio project init -b uno|), write a basic \verb|Blink| sketch in \verb|src/main.cpp|, and compile it using \verb|pio run|.
-        \item \textbf{Flashing:} The compiler generates a machine-code file. Copy it to your phone's storage (e.g., \verb|cp .pio/build/uno/firmware.hex /sdcard/|). Open ArduinoDroid, connect the Arduino via OTG, locate the \verb|.hex| file, and upload it.
+        \item \textbf{Compiler Installation (Inside Debian):} Now that we are in our Debian environment, we install the tools to compile our code.
+        \begin{itemize}
+            \item \verb|apt update && apt install python3 python3-venv|: We update our package lists and install Python, which is required by PlatformIO. A `venv` (virtual environment) is a best practice to keep project dependencies isolated.
+            \item \verb|python3 -m venv pio_env|: Creates a directory named \verb|pio_env| containing a self-contained Python installation.
+            \item \verb|source pio_env/bin/activate|: This command activates the virtual environment. You'll see \verb|(pio_env)| in your terminal prompt.
+            \item \verb|pip install platformio|: This is the main event. \verb|pip| (Python's package installer) downloads and installs PlatformIO, a powerful, cross-platform build system for embedded devices.
+        \end{itemize}
+        \item \textbf{The Build Pipeline in Action:}
+        \begin{itemize}
+            \item \verb|pio project init -b uno|: Initializes a new PlatformIO project in the current directory, configured for the ``uno'' (Arduino Uno) board.
+            \item Create a file named \verb|src/main.cpp| and add the standard ``Blink'' sketch.
+            \item \verb|pio run|: This command orchestrates the entire build process. It finds your source code, invokes the compiler (avr-g++), links everything, and generates the final \verb|firmware.hex| file.
+        \end{itemize}
+        \item \textbf{Flashing the Firmware:}
+        \begin{itemize}
+            \item The compiled file is located at \verb|.pio/build/uno/firmware.hex|.
+            \item From within your Debian environment, copy this file to your phone's shared storage: \verb|cp .pio/build/uno/firmware.hex /data/data/com.termux/files/home/storage/shared/|.
+            \item Open ArduinoDroid. Connect your Arduino via the OTG cable. In ArduinoDroid, go to `Sketch` > `Upload`, and navigate to the `.hex` file you just copied. Select it, and ArduinoDroid will handle the upload process.
+        \end{itemize}
     \end{enumerate}
-    \item \textbf{Checkpoint:} The onboard LED (Pin 13) is blinking.
+    \item \textbf{Checkpoint:} The onboard LED (connected to Pin 13) on your Arduino Uno is blinking, confirming your entire mobile toolchain is operational.
 \end{itemize}
 \newpage
 \subsection*{Module 1.2: C/C++ Refresher, Basic I/O \& Breadboarding (75 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Review control flow and variables while introducing hardware pull-up resistors and digital logic states.
+    \item \textbf{Goal:} Review fundamental programming concepts (variables, control flow) while introducing physical hardware interaction with buttons and LEDs.
     \item \textbf{Requirements:} Breadboard, 1x LED, 1x Pushbutton, 1x 220$\Omega$ Resistor, Jumper wires.
+    \item \textbf{Conceptual Overview:} A microcontroller's pins are its connection to the world. We can configure them as \textbf{OUTPUT} to control things (like LEDs) or as \textbf{INPUT} to sense things (like buttons). We will also learn about internal pull-up resistors, a crucial concept for reliable digital inputs.
     \item \textbf{Wiring Guide:}
 \end{itemize}
 
@@ -57,29 +86,69 @@
 \toprule
 \textbf{Component} & \textbf{Component Pin} & \textbf{Connection Point} & \textbf{Notes} \\
 \midrule
-LED & Anode (Long Leg) & Arduino Pin 8 & Standard output. \\
-LED & Cathode (Short Leg) & GND via 220$\Omega$ Resistor & Current limiting. \\
-Pushbutton & Leg 1 & Arduino Pin 9 & Input pin. \\
-Pushbutton & Leg 2 & GND & We will use the Arduino's internal pull-up. \\
+LED & Anode (Long Leg) & Arduino Pin 8 & The pin we will control. \\
+LED & Cathode (Short Leg) & GND via 220$\Omega$ Resistor & The resistor limits current to prevent burning out the LED. \\
+Pushbutton & Leg 1 & Arduino Pin 9 & The pin we will read from. \\
+Pushbutton & Leg 2 & GND & When pressed, this will connect Pin 9 to Ground. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{itemize}
-    \item \textbf{Action Steps:}
+    \item \textbf{Action Steps \& Code:}
     \begin{enumerate}[label=\arabic*.]
-        \item Wire the circuit according to the table.
-        \item \textbf{C++ Refresher:} Write a script using \verb|pinMode(8, OUTPUT)| and \verb|pinMode(9, INPUT_PULLUP)|. Explain that \verb|INPUT_PULLUP| uses a microscopic resistor inside the Arduino to hold the pin \verb|HIGH| by default. Pressing the button connects it to ground, making it \verb|LOW|.
-        \item Write an \verb|if/else| loop: If the button reads \verb|LOW| (pressed), write Pin 8 \verb|HIGH| (LED on).
+        \item Wire the circuit on your breadboard as described in the table.
+        \item \textbf{The Code Explained:} Create a new PlatformIO project and use the following code in your \verb|src/main.cpp|.
+\begin{lstlisting}[caption={Code for Module 1.2: Button-controlled LED}]
+// Constants make code more readable. Instead of remembering which pin
+// number does what, we give them meaningful names.
+const int led_pin = 8;
+const int btn_pin = 9;
+
+void setup() {
+  // This function runs once when the Arduino powers on.
+  // We configure our pins here.
+  
+  // Set the led_pin (Pin 8) as an OUTPUT.
+  pinMode(led_pin, OUTPUT);
+  
+  // Set the btn_pin (Pin 9) as an INPUT_PULLUP.
+  // This is special! It tells the Arduino to use an internal
+  // resistor to pull the pin's voltage to 5V (HIGH).
+  // Without this, the pin would be ``floating'' and give random readings.
+  pinMode(btn_pin, INPUT_PULLUP);
+}
+
+void loop() {
+  // This function runs over and over again, forever.
+  
+  // Read the state of the button pin.
+  // Because of the PULLUP, it will be HIGH (1) when not pressed.
+  // When you press the button, it connects to GND, so the state becomes LOW (0).
+  int state = digitalRead(btn_pin);
+
+  // Check if the button is being pressed (state is LOW).
+  if (state == LOW) {
+    // Turn the LED on by sending 5V to its pin.
+    digitalWrite(led_pin, HIGH);
+  } else {
+    // If the button is not pressed, turn the LED off.
+    digitalWrite(led_pin, LOW);
+  }
+}
+\end{lstlisting}
+        \item Compile and flash this code to your Arduino.
     \end{enumerate}
-    \item \textbf{Checkpoint:} Successfully bridging physical mechanical action with software conditional logic.
+    \item \textbf{Checkpoint:} When you press the button, the LED turns on. When you release it, the LED turns off. You have successfully bridged a physical mechanical action with software conditional logic.
+    \item \textbf{Challenge:} Modify the code so the LED is ON by default and turns OFF only when you are holding the button down. (Hint: You only need to change two words in the `loop` function).
 \end{itemize}
 \newpage
 \subsection*{Module 1.3: 7-Segment Basics \& Active-Low Logic (30 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Introduce the 7-segment display and introduce ``active-low" logic (where a 0 turns something ON).
+    \item \textbf{Goal:} Introduce the 7-segment display, a common component for displaying numbers, and understand the concept of ``active-low'' logic.
     \item \textbf{Requirements:} 1x Common-Anode 7-Segment Display, 7x 220$\Omega$ Resistors.
+    \item \textbf{Conceptual Overview:} A 7-segment display is just 7 individual LEDs (plus a decimal point) arranged in a figure-8 pattern. By turning specific LEDs on or off, we can form any number. We will use a ``Common Anode'' display. This means all the positive terminals (anodes) of the LEDs are connected together to a single pin.
     \item \textbf{Wiring Guide (Display to Arduino):}
 \end{itemize}
 
@@ -90,19 +159,66 @@ Pushbutton & Leg 2 & GND & We will use the Arduino's internal pull-up. \\
 \textbf{Arduino Pin} & \textbf{7-Seg Pin} & \textbf{Component} \\
 \midrule
 5V & Common (COM) & Wire directly to 5V. \\
-Pin 2 to Pin 8 & Segments A through G & Connect via 220$\Omega$ Resistors. \\
+Pin 2 through Pin 8 & Segments A through G & Connect each via a 220$\Omega$ Resistor. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{itemize}
-    \item \textbf{Action Steps:}
+    \item \textbf{Action Steps \& Code:}
     \begin{enumerate}[label=\arabic*.]
-        \item Place the display on the breadboard. Connect the common pins to 5V (Anode).
-        \item \textbf{The Concept:} Because the common pin is at 5V, the segments need a path to Ground to light up. Therefore, writing a pin \verb|LOW| turns the segment ON. Writing it \verb|HIGH| turns it OFF.
-        \item Write code using an array of booleans to manually drive the pins to form the number `8' (all segments \verb|LOW|), then modify it to form the number `3'.
+        \item Place the display on the breadboard. Connect the common pin(s) to the 5V rail.
+        \item \textbf{The Active-Low Concept:} Because the common anode is held at 5V, an individual segment (LED) will only light up if its other end (the cathode, connected to an Arduino pin) is set to a lower voltage, i.e., Ground. Therefore, to turn a segment ON, we must write its corresponding Arduino pin \verb|LOW|. To turn it OFF, we write the pin \verb|HIGH|, making both sides of the LED at 5V, so no current flows. This is ``active-low'' logic: a LOW signal means ``active''.
+        \item \textbf{The Code Explained:}
+\begin{lstlisting}[caption={Code for Module 1.3: Driving a 7-Segment Display}]
+// Assigning each segment to a pin for clarity.
+const int seg_a = 2;
+const int seg_b = 3;
+const int seg_c = 4;
+const int seg_d = 5;
+const int seg_e = 6;
+const int seg_f = 7;
+const int seg_g = 8;
+
+// An array to hold all our segment pins, making them easy to loop through.
+const int segs[] = {seg_a, seg_b, seg_c, seg_d, seg_e, seg_f, seg_g};
+
+// A `bool' array to define the pattern for the number `8'.
+// Remember, LOW means ON for our common-anode display.
+// Segments:         {a,   b,   c,   d,   e,   f,   g}
+const bool eight[] = {LOW, LOW, LOW, LOW, LOW, LOW, LOW};
+
+// The pattern for the number `3'. Segments `e' and `f' are off.
+const bool three[] = {LOW, LOW, LOW, LOW, HIGH, HIGH, LOW};
+
+// A reusable function to display a pattern on the segments.
+void show_digit(const bool segments[]) {
+  for (int i = 0; i < 7; i++) {
+    // Write the state (HIGH or LOW) from the pattern array
+    // to the corresponding segment pin.
+    digitalWrite(segs[i], segments[i]);
+  }
+}
+
+void setup() {
+  // Loop through all the segment pins and set them to OUTPUT mode.
+  for (int i = 0; i < 7; i++) {
+    pinMode(segs[i], OUTPUT);
+  }
+
+  // Initially, display the number 8 for 2 seconds.
+  show_digit(eight);
+  delay(2000);
+}
+
+void loop() {
+  // Continuously display the number 3.
+  show_digit(three);
+}
+\end{lstlisting}
     \end{enumerate}
-    \item \textbf{Checkpoint:} Manually mapping an array of 1s and 0s in code to a physical number on the display, understanding that 0 = ON in a common-anode setup.
+    \item \textbf{Checkpoint:} The display shows the number `8' for two seconds, then changes to `3' and stays there. You have manually mapped an array of 1s and 0s in code to a physical number on the display.
+    \item \textbf{Challenge:} Create new boolean arrays for the numbers `1' and `4'. Modify the `loop` function to make the display cycle through 1, 3, 4, and 8, spending one second on each number.
 \end{itemize}
 
 \end{document}

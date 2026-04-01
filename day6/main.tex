@@ -1,12 +1,26 @@
 \documentclass[11pt,a4paper]{article}
+\usepackage{xcolor}
 \usepackage[utf8]{inputenc}
 \usepackage{geometry}
 \geometry{margin=1in}
 \usepackage{hyperref}
 \usepackage{enumitem}
+\usepackage{listings}
+
+\lstset{
+  language=C,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
 
 \title{Digital Design Training Program \\ \large Day 6: The AVR Toolchain \& Matrix Keypad}
-\author{Author,who}
+\author{Authored by }
 \date{April 1, 2026}
 
 \begin{document}
@@ -18,43 +32,234 @@
 \subsection*{Module 6.1: Termux AVR-GCC \& Makefiles (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Drop down a layer of abstraction from PlatformIO to understand how the GNU Compiler Collection transforms C code into a machine binary.
+    \item \textbf{Goal:} Understand and control the entire compilation process from C source code to a flashable \verb|.hex| file using the standard AVR-GCC toolchain and a \verb|Makefile|.
     \item \textbf{Action Steps:}
     \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Environment Setup:} Inside the Debian environment in Termux, install the raw compilation tools: \verb|apt install gcc-avr binutils-avr avr-libc make|.
-        \item \textbf{The Compilation Pipeline:} Explain the journey from \verb|.c| source files to \verb|.o| object files (compilation), the linking process into an \verb|.elf| executable, and the final extraction into a \verb|.hex| file.
-        \item \textbf{Writing a Makefile:} Create a basic \verb|Makefile| to automate these steps. Define the microcontroller (\verb|MCU = atmega328p|) and the clock frequency (\verb|F_CPU = 16000000UL|).
-        \item \textbf{Execution:} Run \verb|make| in the terminal to compile the Day 5 bare-metal code, then flash the resulting \verb|.hex| file using the established ArduinoDroid method.
+        \item \textbf{Environment Setup:} Inside your Debian environment, install the essential tools.
+        \begin{lstlisting}[language=bash]
+# Update package lists and install the C compiler for AVR,
+# binary utilities (for linking/objcopy), the standard C library for AVR,
+# and the 'make' utility.
+apt update
+apt install gcc-avr binutils-avr avr-libc make
+        \end{lstlisting}
+        \item \textbf{The Compilation Pipeline Explained:}
+        \begin{itemize}
+            \item \textbf{Compiling:} \verb|avr-gcc| takes your \verb|.c| file and compiles it into an intermediate \verb|.o| (object) file containing machine code, but without memory addresses finalized.
+            \item \textbf{Linking:} \verb|avr-gcc| then links all \verb|.o| files together into a single \verb|.elf| (Executable and Linkable Format) file. This file contains the final code, data, and metadata.
+            \item \textbf{Extracting:} \verb|avr-objcopy| is a utility that extracts the raw program code from the \verb|.elf| file and formats it into the standard Intel \verb|.hex| format that programmers like ArduinoDroid understand.
+        \end{itemize}
+        \item \textbf{Writing a Makefile:} A \verb|Makefile| is a recipe for the \verb|make| utility. It defines how to build your project. Create a file named \verb|Makefile| with the following content:
+\begin{lstlisting}[language=make]
+# --- Project Definitions ---
+# The microcontroller we are using
+MCU = atmega328p
+# The clock frequency of the microcontroller (16MHz for Arduino Uno)
+F_CPU = 16000000UL
+# The name of our project (will be the name of the .hex file)
+TARGET = main
+
+# --- Toolchain Definitions ---
+CC = avr-gcc
+OBJCOPY = avr-objcopy
+CFLAGS = -Wall -Os -mmcu=$(MCU) -DF_CPU=$(F_CPU)
+
+# --- Build Rules ---
+# The default rule, executed when you just type ``make''
+all: $(TARGET).hex
+
+# Rule to create the .hex file from the .elf file
+$(TARGET).hex: $(TARGET).elf
+	$(OBJCOPY) -O ihex -R .eeprom $(TARGET).elf $(TARGET).hex
+
+# Rule to link the .o file into a .elf file
+$(TARGET).elf: $(TARGET).o
+	$(CC) $(CFLAGS) -o $(TARGET).elf $(TARGET).o
+
+# Rule to compile the .c file into a .o file
+$(TARGET).o: $(TARGET).c
+	$(CC) $(CFLAGS) -c $(TARGET).c -o $(TARGET).o
+
+# Rule to clean up all generated files
+clean:
+	rm -f $(TARGET).o $(TARGET).elf $(TARGET).hex
+
+# Rule to flash the code (assumes avrdude is installed and configured)
+# This is a more advanced step, for now we will copy the .hex manually.
+flash: $(TARGET).hex
+	avrdude -c arduino -p $(MCU) -P /dev/ttyUSB0 -b 115200 -U flash:w:$(TARGET).hex
+\end{lstlisting}
+        \item \textbf{Execution:} Place your C code in a file named \verb|main.c| in the same directory as the \verb|Makefile|. Run \verb|make| in the terminal. It will automatically find the files and execute the commands to produce \verb|main.hex|.
     \end{enumerate}
-    \item \textbf{Checkpoint:} Successfully compiling and building the code manually via the command line without relying on an IDE or PlatformIO's automated scripts.
+    \item \textbf{Checkpoint:} You can successfully compile the bare-metal code from Day 5 using \verb|make| and flash the resulting \verb|.hex| file. You are now in full control of the build process.
 \end{itemize}
 \newpage
 \subsection*{Module 6.2: Matrix Scanning in C (60 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Wire a 5x5 matrix keypad and write a custom bare-metal driver to read 25 buttons using only 10 microcontroller pins.
-    \item \textbf{Requirements:} 1x 5x5 Matrix Keypad, Breadboard jumper wires.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Hardware Grouping:} Connect the 5 Row pins to \verb|PORTD| (e.g., PD2-PD6) and the 5 Column pins to \verb|PORTC| (e.g., PC0-PC4). Keeping rows and columns on their own dedicated ports makes the bitwise math significantly easier.
-        \item \textbf{The Scanning Algorithm (Theory):} The microcontroller must sequentially pull one column \verb|LOW| while keeping the others \verb|HIGH|, then read all the rows. If a row reads \verb|LOW|, the button at that row/column intersection is pressed.
-        \item \textbf{Driver Implementation:} Write the nested loops in C to perform this scan rapidly. Use a 2D array as a lookup table to map the detected row/column indices to the corresponding character or number.
+    \item \textbf{Goal:} Wire a 4x4 matrix keypad and write a custom bare-metal driver to read 16 buttons using only 8 microcontroller pins.
+    \item \textbf{Conceptual Overview (Polling):} The keypad is a grid of wires. Pressing a button connects one row wire to one column wire. To find the pressed button, we can't just read the pins; we have to actively scan. The algorithm is:
+    \begin{enumerate}
+        \item Set all columns as outputs and all rows as inputs with pull-ups enabled.
+        \item For each column:
+        \begin{itemize}
+            \item Drive only that column LOW.
+            \item Read all the row pins.
+            \item If a row pin is LOW, the button at the intersection of the active column and that row is the one being pressed.
+        \end{itemize}
+        \item Drive the column HIGH again and move to the next column.
     \end{enumerate}
-    \item \textbf{Checkpoint:} Pressing any of the 25 buttons correctly identifies its unique coordinate (e.g., Row 3, Col 2) and prints the mapped character to a serial debug output or LED indicator.
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 6.2: Polling Keypad Scanner}]
+#include <avr/io.h>
+#include <util/delay.h>
+
+// Let's use PORTC for Columns 0-3 and PORTD for Rows 0-3
+#define COL_PORT PORTC
+#define COL_DDR  DDRC
+#define ROW_PORT PORTD
+#define ROW_DDR  DDRD
+#define ROW_PINS PIND
+
+int main(void) {
+    // Set LED on PB5 for output
+    DDRB |= (1 << PB5);
+
+    // Set rows as inputs with pull-ups
+    ROW_DDR = 0x00;  // All pins of PORTD are inputs
+    ROW_PORT = 0xFF; // Enable pull-ups on all pins of PORTD
+
+    // Set columns as outputs, initially HIGH
+    COL_DDR = 0xFF;  // All pins of PORTC are outputs
+    COL_PORT = 0xFF; // All columns HIGH
+
+    while (1) {
+        int key_pressed = -1;
+
+        // Scan through columns 0 to 3
+        for (int c = 0; c < 4; c++) {
+            // Pull the current column LOW
+            COL_PORT &= ~(1 << c);
+
+            // Check all rows
+            for (int r = 0; r < 4; r++) {
+                // If a row pin is now LOW, a button is pressed
+                if (!(ROW_PINS & (1 << r))) {
+                    key_pressed = (r * 4) + c;
+                    // Simple debounce and wait for release
+                    _delay_ms(50);
+                    while(!(ROW_PINS & (1 << r)));
+                    goto found; // Break out of both loops
+                }
+            }
+            // Restore the column to HIGH before moving to the next
+            COL_PORT |= (1 << c);
+        }
+
+    found:
+        if (key_pressed != -1) {
+            // Blink the LED 'key_pressed' number of times
+            for(int i=0; i <= key_pressed; i++) {
+                PORTB |= (1 << PB5); _delay_ms(100);
+                PORTB &= ~(1 << PB5); _delay_ms(100);
+            }
+        }
+    }
+    return 0;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} Pressing any of the 16 buttons correctly identifies its unique index (0-15) and blinks the onboard LED accordingly. The \verb|while(1)| loop is constantly busy scanning, consuming CPU cycles.
 \end{itemize}
 \newpage
 \subsection*{Module 6.3: Pin Change Interrupts (PCINT) (60 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Prevent the microcontroller from wasting CPU cycles constantly polling the keypad by using hardware interrupts to detect keypresses instantly.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Interrupt Theory:} Understand the difference between standard External Interrupts (\verb|INT0|, \verb|INT1|) and Pin Change Interrupts (\verb|PCINT|), which can trigger on state changes across entire 8-bit ports.
-        \item \textbf{Rest State Configuration:} While waiting for an input, all columns must be driven \verb|LOW| and all rows must be set as \verb|INPUT_PULLUP|. This ensures any keypress pulls a row \verb|LOW|.
-        \item \textbf{Register Setup:} Configure the Pin Change Interrupt Control Register (\verb|PCICR|) to enable interrupts for the port connected to the keypad rows (\verb|PORTD|). Set the specific pins in the Pin Change Mask Register (\verb|PCMSK2|) to listen strictly to those 5 row pins.
-        \item \textbf{The ISR Workflow:} Write the \verb|ISR(PCINT2_vect)| routine. When a button is pressed, the interrupt fires. Inside the ISR, quickly execute the matrix scanning function from Module 6.2 to determine \emph{which} button was pressed, save the result, and restore the rest state.
-    \end{enumerate}
-    \item \textbf{Checkpoint:} The matrix scanning algorithm runs \emph{only} when a physical button is pushed. The main \verb|while(1)| loop is now completely empty and free to handle other intensive tasks.
+    \item \textbf{Goal:} Eliminate wasteful polling by using hardware interrupts to detect keypresses, allowing the CPU to sleep or perform other tasks.
+    \item \textbf{Conceptual Overview:} Instead of constantly asking ``Is a button pressed?'', we will configure the hardware to tell us when one is. We set the keypad to a ``rest state'' and enable Pin Change Interrupts on the row pins. When a button is pressed, a row pin changes state, triggering an ISR. The ISR's job is to then perform a single, quick scan to find out \emph{which} button was pressed.
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 6.3: Interrupt-Driven Keypad}]
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+// Using PORTD for rows, so we need PCINT on PORTD, which is PCINT2
+#define ROW_PORT PORTD
+#define ROW_DDR  DDRD
+#define ROW_PINS PIND
+#define COL_PORT PORTC
+#define COL_DDR  DDRC
+
+volatile int g_key = -1; // Global variable to store pressed key
+
+// Function to put keypad pins in the ``listening'' state
+void keypad_enable_interrupts() {
+    // Rows are inputs with pull-ups
+    ROW_DDR = 0x00;
+    ROW_PORT = 0xFF;
+    // Columns are outputs driven LOW
+    COL_DDR = 0xFF;
+    COL_PORT = 0x00;
+    
+    // Enable Pin Change Interrupt for PORTD (PCIE2)
+    PCICR |= (1 << PCIE2);
+    // Unmask interrupts for pins PD0-PD3 (PCINT16-19)
+    PCMSK2 |= (1 << PCINT16) | (1 << PCINT17) | (1 << PCINT18) | (1 << PCINT19);
+}
+
+// The ISR for Pin Change Interrupt Request 2 (covers PORTD)
+ISR(PCINT2_vect) {
+    // Immediately disable the interrupt to prevent bouncing/re-entry
+    PCICR &= ~(1 << PCIE2);
+
+    // --- Perform a single scan to find the pressed key ---
+    // Invert logic: Rows as outputs, Columns as inputs
+    ROW_DDR = 0xFF;
+    ROW_PORT = 0xFF;
+    COL_DDR = 0x00;
+    COL_PORT = 0xFF; // Enable pull-ups on columns
+    _delay_us(10); // Wait for pull-ups to stabilize
+
+    for (int r = 0; r < 4; r++) {
+        ROW_PORT &= ~(1 << r); // Drive one row LOW
+        for (int c = 0; c < 4; c++) {
+            if (!(PINC & (1 << c))) { // Check if a column is now LOW
+                g_key = (r * 4) + c;
+                goto isr_found;
+            }
+        }
+        ROW_PORT |= (1 << r); // Drive row HIGH again
+    }
+
+isr_found:
+    // Store the key and re-enable interrupts for the next press
+    keypad_enable_interrupts();
+}
+
+int main(void) {
+    DDRB |= (1 << PB5); // LED for output
+    keypad_enable_interrupts();
+    sei(); // Enable global interrupts
+
+    while (1) {
+        // The main loop is now free! It only acts when a key has been found.
+        if (g_key != -1) {
+            cli(); // Disable interrupts to safely access g_key
+            int key = g_key;
+            g_key = -1;
+            sei(); // Re-enable interrupts
+
+            // Blink the LED to show the key was received
+            for(int i=0; i <= key; i++) {
+                PORTB |= (1 << PB5); _delay_ms(100);
+                PORTB &= ~(1 << PB5); _delay_ms(100);
+            }
+        }
+        // We could put the CPU to sleep here for max power savings!
+    }
+    return 0;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} The keypad works as before, but the \verb|while(1)| loop is now empty. The CPU is only doing work when a button is physically pressed, which is a vastly more efficient design.
 \end{itemize}
 
 \end{document}

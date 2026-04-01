@@ -5,35 +5,83 @@
 \usepackage{hyperref}
 \usepackage{booktabs}
 \usepackage{enumitem}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{xcolor}
+
+\lstset{
+  language=C++,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
 
 \title{Digital Design Training Program \\ \large Day 2: Logic Gates, Decoders \& State Machines}
-\author{Author,who}
+\author{Authored by }
 \date{April 1, 2026}
 
 \begin{document}
 
 \maketitle
 
-\section*{Theme: Dedicated hardware logic and managing state in software.}
+\section*{Theme: Moving from software-only logic to dedicated hardware logic and managing state in software.}
 
 \subsection*{Module 2.1: Combinational Logic \& K-Maps (60 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Understand how digital circuits make decisions without software by using Boolean algebra.
+    \item \textbf{Goal:} Understand how digital circuits can make decisions without software by using Boolean algebra, and how to simplify this logic for efficient hardware implementation.
+    \item \textbf{Conceptual Overview:} At its core, all digital logic is based on a few simple operations: AND, OR, and NOT. By combining these, we can create circuits that perform complex tasks. This is called \textbf{combinational logic} because the output is purely a combination of the current inputs; it has no memory of past events.
     \item \textbf{Action Steps:}
     \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Truth Tables:} Create a table for counting 0 to 9 in binary (0000 to 1001).
-        \item \textbf{Boolean Derivation:} Introduce Karnaugh Maps (K-Maps) as a visual way to simplify logic. Have students map out the logic required to determine when a counter should reset back to zero (e.g., detecting the number 10, or binary 1010).
-        \item \textbf{Math to Hardware:} Show how a derived equation like $Reset=Q_{3}\cdot Q_{1}$ directly translates to a physical AND gate connected to the 4th and 2nd bits of a binary signal.
+        \item \textbf{Truth Tables:} A truth table is the definitive specification for a piece of combinational logic. It lists every possible combination of inputs and the desired output. Let's design the logic for just one segment of our 7-segment display, segment 'g` (the middle bar). We need to know, for each number from 0-9 (represented by a 4-bit input: D, C, B, A), whether segment 'g' should be ON or OFF.
+        \begin{center}
+        \begin{tabular}{ccccc|c}
+        \toprule
+        \multicolumn{5}{c|}{Inputs} & Output \\
+        \textbf{Num} & \textbf{D} & \textbf{C} & \textbf{B} & \textbf{A} & \textbf{Seg `g' (Active LOW)} \\
+        \midrule
+        0 & 0 & 0 & 0 & 0 & HIGH (OFF) \\
+        1 & 0 & 0 & 0 & 1 & HIGH (OFF) \\
+        2 & 0 & 0 & 1 & 0 & LOW (ON) \\
+        3 & 0 & 0 & 1 & 1 & LOW (ON) \\
+        4 & 0 & 1 & 0 & 0 & LOW (ON) \\
+        5 & 0 & 1 & 0 & 1 & LOW (ON) \\
+        6 & 0 & 1 & 1 & 0 & LOW (ON) \\
+        7 & 0 & 1 & 1 & 1 & HIGH (OFF) \\
+        8 & 1 & 0 & 0 & 0 & LOW (ON) \\
+        9 & 1 & 0 & 0 & 1 & LOW (ON) \\
+        \bottomrule
+        \end{tabular}
+        \end{center}
+        \item \textbf{Boolean Derivation:} From the truth table, we can write a Boolean expression for when segment 'g' is ON. This is the ``Sum of Products'' form.
+        \begin{center}
+        $g = (D'C'BA') + (D'C'BB) + (D'CB'A') + ...$
+        \end{center}
+        This expression is long and would require many logic gates to build. We need to simplify it.
+        \item \textbf{Karnaugh Maps (K-Maps):} A K-Map is a graphical tool for simplifying Boolean expressions. It's a grid where each cell corresponds to a row in the truth table. By grouping adjacent '1's (or in our case, LOWs) in the grid into power-of-two-sized blocks (1, 2, 4, 8...), we can find a simpler logical expression.
+        \item \textbf{Math to Hardware:} After simplification (a process beyond this module's scope), one might find a much simpler equation. For example, the logic to detect the number 10 (binary 1010) for a counter reset is simply $Reset = D \cdot B$. This means you only need one 2-input AND gate. The 'D' output (pin for bit 3) and the 'B' output (pin for bit 1) of your counter become the inputs to this AND gate. When both are HIGH (representing '1'), the gate's output goes HIGH, triggering a reset.
     \end{enumerate}
-    \item \textbf{Checkpoint:} Understanding that software \verb|if| statements can be represented purely as mathematical equations and physical logic gates.
+    \item \textbf{Checkpoint:} You should understand that any software `if/else` statement based on a set of boolean inputs can be represented and built with a physical arrangement of logic gates.
 \end{itemize}
 \newpage
 \subsection*{Module 2.2: Hardware Decoders - The 7447 IC (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Learn how to read an IC datasheet and use a hardware decoder to drastically reduce the number of pins required by the Arduino.
-    \item \textbf{Requirements:} 1x 7447 IC (BCD to 7-Segment Decoder), the 7-Segment Display from Day 1.
+    \item \textbf{Goal:} Learn how to offload complex logic to a dedicated Integrated Circuit (IC) and how to read an IC datasheet to understand its function.
+    \item \textbf{Requirements:} 1x 7447 IC (BCD to 7-Segment Decoder), the Common-Anode 7-Segment Display from Day 1.
+    \item \textbf{Conceptual Overview:} The K-Map process for all 7 segments is tedious. A \textbf{hardware decoder} is an IC that has already done this work for you. The 7447 IC is a ``BCD to 7-Segment Decoder''. It takes a 4-bit Binary Coded Decimal (BCD) number as input and outputs the correct 7 signals to drive a common-anode display. This is a powerful form of \textbf{abstraction}.
+    \item \textbf{How to Read a Datasheet:}
+    \begin{enumerate}
+        \item \textbf{Find the Pinout:} The first thing you need is the pin diagram. This shows you what each pin on the IC does (VCC, GND, Inputs A/B/C/D, Outputs a/b/c/d/e/f/g, etc.).
+        \item \textbf{Find the Truth Table:} The datasheet will have a truth table that is the ultimate authority on how the chip behaves. It will show you what the 7 outputs will be for every combination of the 4 inputs.
+        \item \textbf{Special Pins:} Look for pins like ``Lamp Test'' (LT), ``Blanking Input'' (BI), and ``Ripple Blanking Output'' (RBO). The datasheet will explain that you usually need to tie these to 5V (HIGH) to disable them for normal operation.
+        \item \textbf{Electrical Characteristics:} This section tells you the required voltage (VCC), and how much current the chip draws and its outputs can provide.
+    \end{enumerate}
     \item \textbf{Wiring Guide (Arduino $\to$ 7447 $\to$ 7-Segment):}
 \end{itemize}
 
@@ -41,45 +89,82 @@
 \centering
 \begin{tabular}{lll}
 \toprule
-\textbf{Arduino Pin} & \textbf{7447 IC Pin} & \textbf{Function} \\
+\textbf{Source} & \textbf{Destination} & \textbf{Function} \\
 \midrule
-Pin 8 & A (Input) & BCD Bit 0 (LSB) \\
-Pin 9 & B (Input) & BCD Bit 1 \\
-Pin 10 & C (Input) & BCD Bit 2 \\
-Pin 11 & D (Input) & BCD Bit 3 (MSB) \\
-- & a through g (Outputs) & Connect to 7-Seg A-G via 220$\Omega$ Resistors \\
+Arduino Pin 8 & 7447 Pin 7 (Input A) & BCD Bit 0 (LSB) \\
+Arduino Pin 9 & 7447 Pin 1 (Input B) & BCD Bit 1 \\
+Arduino Pin 10 & 7447 Pin 2 (Input C) & BCD Bit 2 \\
+Arduino Pin 11 & 7447 Pin 6 (Input D) & BCD Bit 3 (MSB) \\
+7447 Outputs (a-g) & 7-Seg Inputs (A-G) & Connect via 220$\Omega$ Resistors \\
+5V & 7447 VCC, LT, BI & Power and disable special features \\
+GND & 7447 GND & Ground \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{itemize}
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item Explain the 7447: It takes a 4-bit Binary Coded Decimal (BCD) input and outputs the complex 7-pin active-low signals automatically.
-        \item Wire the VCC, GND, and the Lamp Test/Blanking inputs of the 7447 to 5V (to keep them disabled).
-        \item Wire the Arduino to the 7447 inputs, and the 7447 outputs to the display.
-    \end{enumerate}
-    \item \textbf{Checkpoint:} Only 4 Arduino pins are needed to control the display instead of 7.
+    \item \textbf{Checkpoint:} You now only need 4 Arduino pins to control the 7-segment display, instead of 7. The complex logic is handled by the 7447 IC, simplifying your code and wiring.
 \end{itemize}
 \newpage
 \subsection*{Module 2.3: State Machines \& Rollovers (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Implement a software state machine to generate the BCD signals that feed the 7447 decoder.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{State Logic:} Create an integer variable \verb|count|.
-        \item Write a \verb|switch(count)| statement (or a function using bitwise masking, if comfortable) that translates the decimal \verb|count| into the 4 \verb|digitalWrite()| commands needed for the A, B, C, and D pins.
-\begin{verbatim}
-// Example snippet for outputting '3' (Binary 0011)
-digitalWrite(8, HIGH); // A
-digitalWrite(9, HIGH); // B
-digitalWrite(10, LOW); // C
-digitalWrite(11, LOW); // D
-\end{verbatim}
-        \item \textbf{Rollover:} Implement the logic so that \verb|count| increments every 500ms. If \verb|count > 9|, reset it to 0.
+    \item \textbf{Goal:} Implement a simple software ``state machine'' to generate the BCD signals that feed the 7447 decoder, creating an automatic counter.
+    \item \textbf{Conceptual Overview:} A state machine is a system that can be in one of a finite number of ``states''. It transitions between these states based on inputs or, in our case, the passage of time. Our state is simple: the number we want to display, from 0 to 9.
+    \item \textbf{Action Steps \& Code:}
+    \begin{enumerate}
+        \item \textbf{State Variable:} We use a simple integer, `count`, to hold the current state of our system.
+        \item \textbf{The Code Explained:} This code increments the state variable and outputs the corresponding BCD value to the 7447 decoder.
+\begin{lstlisting}[caption={Code for Module 2.3: 0-9 BCD Counter}]
+// Pins connecting Arduino to the 7447's BCD inputs
+const int bcd_a = 8; // LSB
+const int bcd_b = 9;
+const int bcd_c = 10;
+const int bcd_d = 11; // MSB
+
+// This variable holds the ``state'' of our machine.
+int count = 0;
+
+// A function to output a number (0-9) as a 4-bit BCD value.
+void show_bcd(int num) {
+  // This is a clever way to set the 4 output pins.
+  // It uses bitwise operators, which are very fast.
+  // (num >> 0) & 1: Checks if the 1st bit of 'num' is 1 or 0.
+  // (num >> 1) & 1: Checks if the 2nd bit of 'num' is 1 or 0.
+  // ...and so on.
+  digitalWrite(bcd_a, (num >> 0) & 1);
+  digitalWrite(bcd_b, (num >> 1) & 1);
+  digitalWrite(bcd_c, (num >> 2) & 1);
+  digitalWrite(bcd_d, (num >> 3) & 1);
+}
+
+void setup() {
+  // Set all our BCD pins to be outputs.
+  pinMode(bcd_a, OUTPUT);
+  pinMode(bcd_b, OUTPUT);
+  pinMode(bcd_c, OUTPUT);
+  pinMode(bcd_d, OUTPUT);
+}
+
+void loop() {
+  // 1. Output the current state (the 'count' value) to the 7447.
+  show_bcd(count);
+  
+  // 2. Wait for a period of time.
+  delay(500); // 500 milliseconds
+  
+  // 3. Transition to the next state.
+  count++;
+  
+  // 4. Handle the ``rollover'' condition.
+  if (count > 9) {
+    count = 0; // Reset to the initial state.
+  }
+}
+\end{lstlisting}
     \end{enumerate}
-    \item \textbf{Checkpoint:} The breadboard now independently counts from 0 to 9 and rolls over smoothly. The system is a hybrid: software handles the state (counting) and hardware handles the rendering (7447 decoding).
+    \item \textbf{Checkpoint:} The breadboard now has a display that independently counts from 0 to 9, resetting to 0 and continuing. This is a hybrid system: the software (`loop` function) acts as the state machine, managing the counting logic, while the hardware (7447 IC) handles the display logic.
+    \item \textbf{Challenge:} Modify the code to make the counter count downwards from 9 to 0. Then, as a bigger challenge, add the button from Day 1. Make the counter stop when the button is held down and resume when it is released.
 \end{itemize}
 
 \end{document}

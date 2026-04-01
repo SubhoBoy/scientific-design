@@ -1,64 +1,182 @@
 \documentclass[11pt,a4paper]{article}
+\usepackage{xcolor}
 \usepackage[utf8]{inputenc}
 \usepackage{geometry}
 \geometry{margin=1in}
 \usepackage{hyperref}
 \usepackage{enumitem}
 \usepackage{amsmath}
+\usepackage{listings}
+
+\lstset{
+  language=C,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
 
 \title{Digital Design Training Program \\ \large Day 10: Capstone Integration and Optimization}
-\author{Author,who}
+\author{Authored by }
 \date{April 1, 2026}
 
 \begin{document}
 
 \maketitle
 
-\section*{Theme: Fusing the hardware drivers, the RK4 math engine, and the parser into a cohesive, physical product.}
+\section*{Theme: Fusing the hardware drivers, the RK4 math engine, and the parser into a cohesive, physical scientific calculator.}
 
 \subsection*{Module 10.1: The Hardware/Software Pipeline (90 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Link the PCINT Keypad driver (Day 6) to the LCD driver (Day 7) and the Parser (Day 9) to create a reactive user interface.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Keypad Mapping:} Map the 5x5 keypad physically. Dedicate the top row to scientific functions (\verb|sin|, \verb|cos|, \verb|exp|, \verb|ln|, \verb|sqrt|). Dedicate the right column to basic operators (\verb|/|, \verb|*|, \verb|-|, \verb|+|, \verb|=|). Map the rest to numbers 0-9, decimal point, and parentheses.
-        \item \textbf{Live LCD Echo:} Modify the Keypad ISR so that whenever a button is pressed, the character is instantly pushed to the \verb|input_buffer| AND sent to the LCD via \verb|lcd_print()|. This gives the user real-time visual feedback.
-        \item \textbf{The Trigger:} Implement logic so that pressing the \verb|=| key locks the keypad, clears the screen, prints ``Calculating...'', and triggers the Tokenizer and Shunting Yard functions.
+    \item \textbf{Goal:} Link the keypad driver, LCD driver, and parser to create a reactive user interface that captures user input and triggers the calculation pipeline.
+    \item \textbf{Conceptual Overview:} The system will be interrupt-driven. The main loop will be idle. The Keypad ISR will be the star, capturing characters, echoing them to the LCD, and setting a flag when the `=' key is pressed. This flag signals the main loop to wake up and perform the calculation.
+    \item \textbf{Action Steps \& Code:}
+    \begin{enumerate}
+        \item \textbf{Keypad Mapping:} We define a 2D array that maps the physical row/column of the keypad to a character. This makes the ISR code clean and easy to modify.
+\begin{lstlisting}
+const char KEYMAP[5][5] = {
+    {`s',`c',`t',`^',`/'}, // sin, cos, tan, pow, div
+    {`7',`8',`9',`*',`('},
+    {`4',`5',`6',`-',`)'},
+    {`1',`2',`3',`+',`l'}, // ln
+    {`0',`.',`e',`=',`C'}  // exp, equals, clear
+};
+\end{lstlisting}
+        \item \textbf{The Global Buffers \& Flags:} We need a few global \verb|volatile| variables to communicate between the ISR and the main loop.
+\begin{lstlisting}
+#define BUF_SIZE 32
+volatile char g_input_buffer[BUF_SIZE];
+volatile int g_buffer_index = 0;
+volatile uint8_t g_start_evaluation = 0; // Flag
+\end{lstlisting}
+        \item \textbf{The Keypad ISR (Upgraded):} The ISR from Day 6 is upgraded. After finding the \verb|key|, it doesn't just store it. It acts as a UI controller.
+\begin{lstlisting}
+ISR(PCINT2_vect) {
+    // ... (keypad scanning logic to find `key') ...
+    
+    if (key) { // If a valid key was found
+        if (key == `=') {
+            g_start_evaluation = 1; // Set the flag for the main loop
+        } else if (key == `C') {
+            g_buffer_index = 0;
+            g_input_buffer[0] = `\0';
+            lcd_cmd(0x01); // Clear screen command
+        } else if (g_buffer_index < BUF_SIZE - 1) {
+            // Add char to buffer and echo to LCD
+            g_input_buffer[g_buffer_index++] = key;
+            g_input_buffer[g_buffer_index] = `\0';
+            lcd_data(key); // Print the character
+        }
+    }
+    
+    // ... (re-enable interrupts) ...
+}
+\end{lstlisting}
+        \item \textbf{The Main Loop:} The main loop is now just a simple state checker.
+\begin{lstlisting}
+int main(void) {
+    // ... (all initializations: lcd, keypad, interrupts) ...
+    sei(); // Enable global interrupts
+
+    while (1) {
+        // Wait for the ISR to tell us to start
+        if (g_start_evaluation) {
+            cli(); // Disable interrupts during calculation
+            g_start_evaluation = 0; // Reset the flag
+            
+            // --- TRIGGER THE PIPELINE ---
+            // 1. Tokenize g_input_buffer
+            // 2. Shunt the tokens to RPN
+            // 3. Evaluate the RPN
+            // 4. Display the result
+            // --------------------------
+            
+            sei(); // Re-enable interrupts
+        }
+    }
+}
+\end{lstlisting}
     \end{enumerate}
-    \item \textbf{Checkpoint:} The user can physically type a long equation on the keypad, see it perfectly rendered on the LCD, and trigger the software backend with the equals button.
+    \item \textbf{Checkpoint:} You can type an equation like \verb|12+s(3)| on the keypad, see it appear on the LCD, and pressing \verb|=| makes the main loop wake up to begin processing.
 \end{itemize}
 \newpage
 \subsection*{Module 10.2: RPN Evaluation \& The Math Engine (60 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Execute the Reverse Polish Notation queue using the custom embedded math algorithms developed on Day 8.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{The Evaluation Stack:} Create a fresh stack to hold numbers during the final calculation.
-        \item \textbf{The Evaluation Loop:} Read the RPN queue left to right.
-        \begin{itemize}
-            \item If it's a number, push it to the Evaluation Stack.
-            \item If it's an operator (\verb|+|, \verb|*|), pop the top two numbers from the stack, perform the math, and push the result back.
-            \item If it's a scientific function (\verb|sin|, \verb|exp|), pop \emph{one} number, pass it into the \textbf{RK4 Engine} or \textbf{Fast Inverse Sqrt} functions built on Day 8, and push the calculated result back.
-        \end{itemize}
-        \item \textbf{Final Output:} When the queue is empty, the final remaining number on the Evaluation Stack is the answer. Pass this float through the custom formatting function (Day 8) and print it to the bottom row of the LCD.
-    \end{enumerate}
-    \item \textbf{Checkpoint:} A fully functional scientific calculator. Typing \verb|sin(1.57)*2=| yields \verb|2.000| on the screen.
+    \item \textbf{Goal:} Write the final piece of the puzzle: a function that evaluates the RPN queue produced by the Shunting-Yard algorithm.
+    \item \textbf{Conceptual Overview:} Evaluating RPN is the simplest part. We use one stack (a \verb|FloatStack|). We read the RPN queue from left to right. If we see a number, we push it onto our stack. If we see an operator or function, we pop the required number of operands from the stack, perform the math, and push the single result back onto the stack. When the queue is empty, the single number remaining on the stack is our final answer.
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 10.2: The RPN Evaluator}]
+// --- Assume all drivers, stacks, and rk4_solve are included ---
+
+float evaluate_rpn(Token* rpn_queue, int queue_len) {
+    FloatStack eval_stack;
+    fstack_init(&eval_stack);
+
+    for (int i = 0; i < queue_len; i++) {
+        Token t = rpn_queue[i];
+
+        if (t.type == T_NUMBER) {
+            // If it's a number, convert from string to float and push
+            fstack_push(&eval_stack, atof(t.value));
+        } else if (t.type == T_OPERATOR) {
+            // Operator: pop two operands, calculate, push result
+            float b = fstack_pop(&eval_stack);
+            float a = fstack_pop(&eval_stack);
+            switch (t.value[0]) {
+                case `+': fstack_push(&eval_stack, a + b); break;
+                case `-': fstack_push(&eval_stack, a - b); break;
+                case `*': fstack_push(&eval_stack, a * b); break;
+                case `/': fstack_push(&eval_stack, a / b); break;
+                // Power (a^b) is tricky. We can use logs: a^b = exp(b * ln(a))
+                case `^': fstack_push(&eval_stack, rk4_solve(0, 1, b * rk4_solve(1, 0, a, deriv_ln), deriv_exp)); break;
+            }
+        } else if (t.type == T_FUNCTION) {
+            // Function: pop one operand, call math engine, push result
+            float a = fstack_pop(&eval_stack);
+            if (strcmp(t.value, ``exp'') == 0) {
+                fstack_push(&eval_stack, rk4_solve(0, 1, a, deriv_exp));
+            } else if (strcmp(t.value, ``ln'') == 0) {
+                fstack_push(&eval_stack, rk4_solve(1, 0, a, deriv_ln));
+            }
+            // Add sin, cos, etc. using their own derivative functions
+        }
+    }
+    // The final result is the only thing left on the stack
+    return fstack_pop(&eval_stack);
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} Your calculator is complete. Typing \verb|1+2*3=| correctly tokenizes, shunts to \verb|1 2 3 * +|, evaluates to \verb|7.0|, and displays it on the screen.
 \end{itemize}
 \newpage
 \subsection*{Module 10.3: UI State Machines \& Benchmarking (60 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Add professional UI features (like a shift key) and scientifically benchmark the accuracy and limitations of their custom RK4 math engine against commercial calculators.
+    \item \textbf{Goal:} Add professional features like a SHIFT key and analyze the performance and accuracy of the finished product.
     \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{Mode Shifting (Software UI):} Dedicate one keypad button as ``SHIFT''. Create a state machine so that pressing SHIFT changes the mapping of the keypad (e.g., the \verb|sin| button becomes \verb|arcsin| or \verb|tan|). Change the LCD cursor style to blink when SHIFT is active.
-        \item \textbf{Benchmarking Execution Time:} Wrap the RPN evaluator in a timer using \verb|millis()|. Print out exactly how many milliseconds it takes the ATmega328P to compute complex equations.
-        \item \textbf{Accuracy Analysis:} Run edge cases (e.g., $e^{\ln(2)}$, or $\sin(\cos(0))$) on the Arduino and compare the results to the smartphone calculator.
-        \item \textbf{Tuning the Engine:} Adjust the step size $h$ in your RK4 algorithms. Observe: making $h$ smaller increases mathematical accuracy, but visibly increases the ``Calculating...'' delay on the screen due to processor load.
+    \begin{enumerate}
+        \item \textbf{Implementing a SHIFT key:}
+        \begin{itemize}
+            \item Add a new global state: \verb|volatile uint8_t g_shift_mode = 0;|
+            \item Create a second keymap: \verb|const char KEYMAP_SHIFT[5][5] = ...| with \verb|asin|, \verb|acos|, \verb|sqrt|, etc.
+            \item In the ISR, if the pressed key is \verb|SHIFT|, simply toggle \verb|g_shift_mode| and update the LCD with a ``SHIFT'' indicator.
+            \item When looking up the key, use an if-statement:\\ \verb|if (g_shift_mode) { key = KEYMAP_SHIFT[r][c]; } else { key = KEYMAP[r][c]; }|.
+        \end{itemize}
+        \item \textbf{Benchmarking Speed:} To see how fast your code is, use a hardware timer. Before calling the calculation pipeline, reset a global \verb|volatile| millisecond counter to 0 and enable the timer. After the result is calculated, disable the timer. The value in the counter is your execution time.
+        \item \textbf{Analyzing Accuracy:} Compare your calculator's results for complex equations (e.g., \verb|sin(0.5)^2 + cos(0.5)^2|) against a known good calculator. Where do they differ? This is due to floating point precision and the approximation error from the RK4 method.
+        \item \textbf{Tuning the Engine:} In your \verb|rk4_solve| function, change the step size \verb|h|.
+        \begin{itemize}
+            \item A smaller \verb|h| (e.g., \verb|0.001|) will yield more accurate results but will take much longer to compute.
+            \item A larger \verb|h| (e.g., \verb|0.1|) will be very fast but less accurate.
+            \item This is the fundamental trade-off in numerical computing: \textbf{Accuracy vs. Speed}.
+        \end{itemize}
     \end{enumerate}
-    \item \textbf{Checkpoint:} You have successfully built a mathematically sound, hardware-optimized, custom-driver scientific calculator from scratch,while understanding every bit of logic from the physical button press to the floating-point approximation.
+    \item \textbf{Final Checkpoint:} You have successfully designed, built, and tested a complete scientific calculator from the ground up. You understand the entire pipeline, from the physics of the button contacts to the hardware drivers, the memory management, the parsing algorithms, the numerical approximation methods, and the final display.
 \end{itemize}
 
 \end{document}

@@ -1,70 +1,208 @@
 \documentclass[11pt,a4paper]{article}
+\usepackage{xcolor}
 \usepackage[utf8]{inputenc}
 \usepackage{geometry}
 \geometry{margin=1in}
 \usepackage{hyperref}
 \usepackage{enumitem}
 \usepackage{amsmath}
+\usepackage{listings}
+
+\lstset{
+  language=C,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
 
 \title{Digital Design Training Program \\ \large Day 7: Custom LCD Drivers and 8-Bit Architecture Limits}
-\author{Author,who}
+\author{Authored by }
 \date{April 1, 2026}
 
 \begin{document}
 
 \maketitle
 
-\section*{Theme: Building a bare-metal communication driver for external displays and understanding the memory/processing constraints of an 8-bit microcontroller without a Floating Point Unit (FPU).}
+\section*{Theme: Building a bare-metal communication driver for external displays and understanding the memory/processing constraints of an 8-bit microcontroller.}
 
 \subsection*{Module 7.1: The 4-Bit Bare-Metal LCD Driver (120 Minutes)}
 
 \begin{itemize}
     \item \textbf{Goal:} Write a complete C driver from scratch to command a 16x2 HD44780 LCD, mastering the concept of bit-shifting data into ``nibbles'' to save microcontroller pins.
-    \item \textbf{Hardware Setup (The PORTB Remap):}
+    \item \textbf{Conceptual Overview:} The HD44780 is a classic character LCD. We could use 8 data lines to communicate with it, but we can save 4 precious I/O pins by using 4-bit mode. This means we have to send each 8-bit command or character as two separate 4-bit chunks (a high nibble and a low nibble).
+    \item \textbf{Hardware Setup:} Wire the LCD to \verb|PORTB| (Digital Pins 8-13) to keep \verb|PORTC| and \verb|PORTD| free for the keypad.
     \begin{itemize}
-        \item To ensure compatibility with our final Capstone, the LCD \emph{must} avoid \verb|PORTD| and \verb|PORTC| (used by the Keypad). Wire the LCD to \verb|PORTB| (Digital Pins 8-13):
-        \item \textbf{RS (Register Select):} \verb|PB0| (Pin 8)
-        \item \textbf{EN (Enable):} \verb|PB1| (Pin 9)
-        \item \textbf{D4 to D7 (Data Lines):} \verb|PB2| to \verb|PB5| (Pins 10 to 13)
-        \item \textbf{R/W:} Tie directly to Ground (we only write to the LCD).
+        \item \textbf{RS (Register Select):} \verb|PB0| (Pin 8). HIGH for data, LOW for commands.
+        \item \textbf{EN (Enable):} \verb|PB1| (Pin 9). We will pulse this to tell the LCD to read the data lines.
+        \item \textbf{D4 to D7 (Data Lines):} \verb|PB2| to \verb|PB5| (Pins 10 to 13).
+        \item \textbf{R/W:} Tie to Ground. We will only write to the LCD.
     \end{itemize}
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-    \item \textbf{The Enable Pulse:} The LCD only reads data when the EN pin drops from HIGH to LOW. Write a \verb|lcd_pulse()| function. \emph{Note: The HD44780 requires strict $\sim$1 microsecond delays to latch data. For this specific low-level hardware timing, we will allow the use of} \verb|<util/delay.h>| (\verb|_delay_us(1)|).
-        \item \textbf{Nibble Shifting:} Because we are using 4-bit mode (saving 4 wires), an 8-bit character (like `A', \verb|0x41|) must be sent in two halves. Write a function that takes an 8-bit \verb|char|, shifts the top 4 bits into \verb|PB2-PB5|, pulses EN, then shifts the bottom 4 bits into \verb|PB2-PB5|, and pulses EN again.
-        \item \textbf{Initialization Sequence:} The hardest part of custom drivers is the ``wake-up'' sequence. Follow the datasheet to send the specific hex commands (\verb|0x33|, \verb|0x32|, \verb|0x28|, \verb|0x0C|, \verb|0x01|) using \verb|lcd_command()|.
-        \item \textbf{Printing:} Write an \verb|lcd_print(char* str)| function that loops through a character array and passes each letter to \verb|lcd_data()| until it hits the null terminator (\verb|'\0'|).
-    \end{enumerate}
-    \item \textbf{Checkpoint:} The screen successfully displays ``Hello World!'' purely through bare-metal register manipulation, without \verb|#include <LiquidCrystal.h>|.
+    \item \textbf{Action Steps \& Code:}
+\begin{lstlisting}[caption={Code for Module 7.1: Bare-Metal LCD Driver}]
+#include <avr/io.h>
+#include <util/delay.h>
+
+// Pin definitions for clarity
+#define LCD_PORT PORTB
+#define LCD_DDR  DDRB
+#define LCD_RS   PB0
+#define LCD_EN   PB1
+#define LCD_D4   PB2
+#define LCD_D5   PB3
+#define LCD_D6   PB4
+#define LCD_D7   PB5
+
+// Create masks for easy manipulation of control and data pins
+#define LCD_DATA_PINS ((1<<LCD_D4)|(1<<LCD_D5)|(1<<LCD_D6)|(1<<LCD_D7))
+#define LCD_CTRL_PINS ((1<<LCD_RS)|(1<<LCD_EN))
+
+// Pulse the EN pin to latch data into the LCD
+void lcd_pulse_en(void) {
+    LCD_PORT |= (1 << LCD_EN);  // EN HIGH
+    _delay_us(1);               // Wait >450ns
+    LCD_PORT &= ~(1 << LCD_EN); // EN LOW
+    _delay_us(50);              // Wait for command to complete
+}
+
+// Send a 4-bit nibble to the data pins
+void lcd_write_nibble(uint8_t nibble) {
+    // Clear the data pins first
+    LCD_PORT &= ~LCD_DATA_PINS;
+    // This is a more efficient way to set the pins than 4 if-statements.
+    // It maps the high 4 bits of \verb|nibble| to the 4 data pins.
+    LCD_PORT |= ((nibble & 0xF0) >> (4 - LCD_D4));
+    lcd_pulse_en();
+}
+
+// Send a full 8-bit byte (command or data)
+void lcd_write(uint8_t byte, uint8_t is_data) {
+    if (is_data) {
+        LCD_PORT |= (1 << LCD_RS); // RS HIGH for data
+    } else {
+        LCD_PORT &= ~(1 << LCD_RS); // RS LOW for commands
+    }
+    
+    lcd_write_nibble(byte & 0xF0);      // Send high nibble
+    lcd_write_nibble((byte << 4) & 0xF0); // Send low nibble
+}
+
+// --- Public API ---
+void lcd_cmd(uint8_t cmd) { lcd_write(cmd, 0); }
+void lcd_data(uint8_t data) { lcd_write(data, 1); }
+void lcd_print(const char *str) { while (*str) lcd_data(*str++); }
+
+void lcd_init(void) {
+    // Set all control and data pins as outputs
+    LCD_DDR |= (LCD_DATA_PINS | LCD_CTRL_PINS);
+    _delay_ms(50); // Wait for LCD to power up
+
+    // --- The Magic Initialization Sequence (from datasheet) ---
+    lcd_write_nibble(0x30); _delay_ms(5);   // Wake up 1
+    lcd_write_nibble(0x30); _delay_us(150); // Wake up 2
+    lcd_write_nibble(0x30); _delay_us(150); // Wake up 3
+    lcd_write_nibble(0x20); _delay_us(150); // Set to 4-bit mode
+
+    lcd_cmd(0x28); // Function Set: 4-bit, 2-line, 5x8 font
+    lcd_cmd(0x0C); // Display Control: Display ON, Cursor OFF
+    lcd_cmd(0x01); // Clear display
+    _delay_ms(2);  // Clear command takes longer
+    lcd_cmd(0x06); // Entry Mode: Increment cursor, no shift
+}
+
+int main(void) {
+    lcd_init();
+    lcd_print(``Hello, Bare-Metal!'');
+    while(1) {}
+    return 0;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} The screen successfully displays ``Hello, Bare-Metal!''. You have written a complete communication driver from scratch.
 \end{itemize}
 \newpage
 \subsection*{Module 7.2: 8-Bit Math Limits \& PROGMEM (30 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Understand the cost of software-emulated floating-point math on an AVR chip, and learn how to utilize Flash memory to save RAM.
+    \item \textbf{Goal:} Understand the high cost of floating-point math on an 8-bit AVR and learn to conserve RAM by storing constant data in Flash memory.
+    \item \textbf{Conceptual Overview:} The ATmega328P is a simple 8-bit integer CPU. It has no hardware Floating Point Unit (FPU). When you use a \verb|float|, the \verb|avr-gcc| compiler must include large software libraries to simulate decimal math. This is slow and consumes a lot of program space. Likewise, the 2KB of SRAM is tiny; storing large, constant lookup tables or strings in SRAM is wasteful.
     \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{The Emulation Cost:}The ATmega328P has no hardware to do decimal math. When you type \verb|float z = x * y;|, the compiler secretly injects hundreds of lines of assembly code to emulate it. To see this in action, compile a blank script, then add a float multiplication and compile again to observe the massive jump in binary size.
-        \item \textbf{SRAM vs. Flash:} The Arduino Uno only has 2KB of SRAM (variables) but 32KB of Flash (program space).
-        \item \textbf{PROGMEM Implementation:} We introduce \verb|<avr/pgmspace.h>|. Write a large array of constant \verb|float| values (e.g., standard conversion factors) and use the \verb|PROGMEM| macro to force the compiler to store it in Flash memory. Read it back using \verb|pgm_read_float()|.
+    \begin{enumerate}
+        \item \textbf{The Cost of Floats:} Compile a simple program that does nothing. Note the size. Now add one line: \verb|volatile float x = 1.23 * 4.56;|. Compile again. The program size will jump by hundreds of bytes due to the inclusion of the software float library.
+        \item \textbf{SRAM vs. Flash:} SRAM is your ``workbench'' - small, fast, and cleared on power-off. Flash is your ``library'' - large, slower, and permanent. We should store all constant, read-only data in the library.
+        \item \textbf{PROGMEM Implementation:} The \verb|PROGMEM| keyword is a directive to the compiler to place data in Flash.
+\begin{lstlisting}[caption={Code for Module 7.2: Using PROGMEM}]
+#include <avr/pgmspace.h> // Required for PROGMEM
+#include <stdlib.h>       // For dtostrf
+#include <stdio.h>        // For snprintf
+
+// Store this array in Flash memory, not SRAM
+const float conversion_factors[] PROGMEM = {
+    2.54, 0.3048, 1.60934, 0.453592, 3.78541
+};
+
+int main(void) {
+    lcd_init(); // Assume LCD driver is included
+
+    // To read from PROGMEM, you MUST use special functions.
+    // This copies the float from Flash into a variable in SRAM.
+    float feet_to_meters = pgm_read_float(&conversion_factors[1]);
+
+    char lcd_buffer[16];
+    char float_buffer[8];
+    
+    // dtostrf is a non-standard but common AVR function to convert float to string
+    // dtostrf(float_val, min_width, num_digits_after_decimal, output_buffer);
+    dtostrf(feet_to_meters, 4, 4, float_buffer);
+    
+    // snprintf is a safe way to format strings
+    snprintf(lcd_buffer, 16, ``1ft = %s m'', float_buffer);
+    
+    lcd_print(lcd_buffer);
+
+    while(1) {}
+    return 0;
+}
+\end{lstlisting}
     \end{enumerate}
-    \item \textbf{Checkpoint:} Understanding how to offload read-only data from precious SRAM and to be economical with \verb|float| types.
+    \item \textbf{Checkpoint:} You understand how to use \verb|PROGMEM| to store constant data in Flash and how to use \verb|pgm_read_*| functions to retrieve it, saving precious SRAM.
 \end{itemize}
 \newpage
 \subsection*{Module 7.3: Mathematical Modeling via ODEs (45 Minutes)}
 
 \begin{itemize}
-    \item \textbf{Goal:} Shift the focus from hardware to numerical methods. Learn how to reframe complex functions (sine, exponential, logarithms) into initial value problems that a computer can solve through repeated addition.
-    \item \textbf{Action Steps:}
-    \begin{enumerate}[label=\arabic*.]
-        \item \textbf{The Math Void:} We cannot easily use standard \verb|<math.h>| libraries for our scientific calculator because they consume too much memory and processing time. We must build our own math engine.
-        \item \textbf{Defining the ODEs:} Frame target functions as Ordinary Differential Equations (ODEs) with an Initial Value:
-        \begin{itemize}
-            \item To find $y=e^{x}$, we solve the ODE $y^{\prime}=y$, where $y(0)=1$.
-            \item To find $y=\sin(x)$, we solve a system where $y^{\prime}=\cos(x)$ and $y(0)=0$.
-        \end{itemize}
-    \end{enumerate}
-    \item \textbf{Checkpoint:} Understanding the concept of numeric integration.
+    \item \textbf{Goal:} Reframe complex mathematical functions as initial value problems that can be solved with simple, iterative arithmetic.
+    \item \textbf{Conceptual Overview:} We can't afford the memory and processing cost of standard \verb|<math.h>| libraries. We need a way to calculate functions like \verb|sin(x)| or \verb|e^x| ourselves. The answer lies in numerical methods, specifically solving Ordinary Differential Equations (ODEs). The simplest method is Euler's Method.
+    \item \textbf{Euler's Method:} An ODE tells us the slope (\verb|y'|) of a function at any point. If we know a starting point \verb|(x0, y0)|, we can approximate the next point by taking a small step in the direction of the slope.
+    \begin{center}
+    $y_{n+1} = y_n + h \cdot y'(x_n, y_n)$
+    \end{center}
+    Where \verb|h| is our small step size. The smaller the \verb|h|, the more accurate the result, but the more steps we need.
+    \item \textbf{Example: Calculating $e^x$:}
+    \begin{itemize}
+        \item \textbf{The ODE:} The function $y = e^x$ is defined by the ODE $y' = y$.
+        \item \textbf{The Initial Value:} We know that $e^0 = 1$. So, our starting point is $y(0) = 1$.
+        \item \textbf{The C Implementation:} Let's approximate $e^{1.0}$ using 100 steps.
+    \end{itemize}
+\begin{lstlisting}[caption={Code for Module 7.3: Euler's Method for $e^x$}]
+float custom_exp(float x) {
+    int steps = 100;
+    float h = x / steps; // Step size
+    float y = 1.0; // Initial value y(0) = 1
+
+    for (int i = 0; i < steps; i++) {
+        // For y' = y, the slope is just the current value of y.
+        float slope = y;
+        // y_new = y_old + h * slope
+        y = y + h * slope;
+    }
+    return y;
+}
+\end{lstlisting}
+    \item \textbf{Checkpoint:} You understand the basic principle of numerical integration: approximating a curve by taking many small, straight-line steps. This is the foundation for building our own math library.
 \end{itemize}
 
 \end{document}
